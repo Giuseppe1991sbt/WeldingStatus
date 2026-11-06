@@ -1,0 +1,13 @@
+{
+  "title": "Weld Status Tracker",
+  "url": "http://127.0.0.1:5500/index.html",
+  "icon": "",
+  "infoUrl": "http://127.0.0.1:5500/index.html",
+  "command": "open",
+  "heightPx": "600",
+  "schemaVersion": "1.0",
+  "extensionType": [
+    "project",
+    "3dviewer"
+  ]
+}
