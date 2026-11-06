@@ -104,7 +104,14 @@ async function readSelectedObject() {
             "<strong>Object Properties:</strong>" +
 
             "<pre style='white-space: pre-wrap; word-break: break-word;'>" +
-            JSON.stringify(properties, null, 2) +
+            JSON.stringify(
+    properties,
+    (key, value) =>
+        typeof value === "bigint"
+            ? value.toString()
+            : value,
+    2
+) +
             "</pre>";
 
     } catch (error) {
