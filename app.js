@@ -15,7 +15,7 @@ async function startTrimbleConnection() {
 
         statusBox.innerHTML =
             "<strong>Connected to Trimble Connect</strong><br><br>" +
-            "Now select an object in the 3D model.";
+            "Now select a weld in the 3D model.";
 
         console.log("Connected to Trimble Connect", API);
 
@@ -53,10 +53,58 @@ async function readSelectedObject() {
 
         console.log("Selection:", selection);
 
+        if (!selection || selection.length === 0) {
+
+            statusBox.innerHTML =
+                "No object selected.";
+
+            return;
+        }
+
+        const selected = selection[0];
+
+        const modelId = selected.modelId;
+        const runtimeIds = selected.objectRuntimeIds;
+
+        if (!runtimeIds || runtimeIds.length === 0) {
+
+            statusBox.innerHTML =
+                "No object selected.";
+
+            return;
+        }
+
+        const properties =
+            await API.viewer.getObjectProperties(
+                modelId,
+                runtimeIds
+            );
+
+        console.log("Object properties:", properties);
+
+        const objectIds =
+            await API.viewer.convertToObjectIds(
+                modelId,
+                runtimeIds
+            );
+
+        console.log("Object IDs:", objectIds);
+
         statusBox.innerHTML =
-            "<strong>Object selected</strong><br><br>" +
-            "<pre>" +
-            JSON.stringify(selection, null, 2) +
+            "<strong>Weld selected</strong><br><br>" +
+
+            "<strong>Model ID:</strong><br>" +
+            modelId +
+            "<br><br>" +
+
+            "<strong>External ID / GUID:</strong><br>" +
+            objectIds.join(", ") +
+            "<br><br>" +
+
+            "<strong>Object Properties:</strong>" +
+
+            "<pre style='white-space: pre-wrap; word-break: break-word;'>" +
+            JSON.stringify(properties, null, 2) +
             "</pre>";
 
     } catch (error) {
@@ -64,10 +112,13 @@ async function readSelectedObject() {
         console.error(error);
 
         statusBox.innerHTML =
-            "<strong>Error reading selection</strong><br>" +
+            "<strong>Error reading weld</strong><br><br>" +
             error.message;
     }
 }
 
 
-window.addEventListener("load", startTrimbleConnection);
+window.addEventListener(
+    "load",
+    startTrimbleConnection
+);
