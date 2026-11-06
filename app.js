@@ -17,12 +17,10 @@ async function startTrimbleConnection() {
             "<strong>Connected to Trimble Connect</strong><br><br>" +
             "Now select a weld in the 3D model.";
 
-        console.log("Connected to Trimble Connect", API);
-
     } catch (error) {
 
         statusBox.innerHTML =
-            "<strong>Connection failed</strong><br>" +
+            "<strong>Connection failed</strong><br><br>" +
             error.message;
 
         console.error(error);
@@ -55,9 +53,7 @@ async function readSelectedObject() {
 
         if (!selection || selection.length === 0) {
 
-            statusBox.innerHTML =
-                "No object selected.";
-
+            statusBox.innerHTML = "No object selected.";
             return;
         }
 
@@ -68,9 +64,7 @@ async function readSelectedObject() {
 
         if (!runtimeIds || runtimeIds.length === 0) {
 
-            statusBox.innerHTML =
-                "No object selected.";
-
+            statusBox.innerHTML = "No object selected.";
             return;
         }
 
@@ -82,13 +76,14 @@ async function readSelectedObject() {
 
         console.log("Object properties:", properties);
 
-        const objectIds =
-            await API.viewer.convertToObjectIds(
-                modelId,
-                runtimeIds
-            );
-
-        console.log("Object IDs:", objectIds);
+        const safeProperties = JSON.stringify(
+            properties,
+            (key, value) =>
+                typeof value === "bigint"
+                    ? value.toString()
+                    : value,
+            2
+        );
 
         statusBox.innerHTML =
             "<strong>Weld selected</strong><br><br>" +
@@ -97,21 +92,10 @@ async function readSelectedObject() {
             modelId +
             "<br><br>" +
 
-            "<strong>External ID / GUID:</strong><br>" +
-            objectIds.join(", ") +
-            "<br><br>" +
-
-            "<strong>Object Properties:</strong>" +
+            "<strong>Object Properties:</strong><br>" +
 
             "<pre style='white-space: pre-wrap; word-break: break-word;'>" +
-            JSON.stringify(
-    properties,
-    (key, value) =>
-        typeof value === "bigint"
-            ? value.toString()
-            : value,
-    2
-) +
+            safeProperties +
             "</pre>";
 
     } catch (error) {
