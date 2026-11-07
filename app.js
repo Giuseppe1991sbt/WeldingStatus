@@ -12,18 +12,17 @@ const statuses = {
 };
 
 
-// -----------------------------------------------------
-// CONNECT TO TRIMBLE
-// -----------------------------------------------------
+// --------------------------------------------------
+// START
+// --------------------------------------------------
 
 async function start() {
 
-    const statusBox =
-        document.getElementById("status");
+    const box = document.getElementById("status");
 
     try {
 
-        statusBox.innerHTML =
+        box.innerHTML =
             "Connecting to Trimble Connect...";
 
         API = await TrimbleConnectWorkspace.connect(
@@ -31,52 +30,29 @@ async function start() {
             onEvent
         );
 
-        statusBox.innerHTML =
-            "<strong>Connected to Trimble Connect</strong><br><br>" +
-            "Checking shared-data permission...";
-
         try {
 
-            const accessToken =
+            const token =
                 await API.extension.requestPermission(
                     "accesstoken"
                 );
 
-            if (
-                accessToken &&
-                typeof accessToken === "string"
-            ) {
-
-                window.trimbleAccessToken =
-                    accessToken;
-
-                console.log(
-                    "Trimble access token received."
-                );
-
-                statusBox.innerHTML =
-                    "<strong>Connected to Trimble Connect</strong><br>" +
-                    "<strong>Shared-data permission granted</strong><br><br>" +
-                    "Select one weld in the 3D model.";
-
-            } else {
-
-                statusBox.innerHTML =
-                    "<strong>Connected to Trimble Connect</strong><br><br>" +
-                    "Select one weld in the 3D model.";
+            if (token) {
+                window.trimbleAccessToken = token;
             }
 
-        } catch (permissionError) {
+        } catch (error) {
 
             console.warn(
-                "Shared permission unavailable:",
-                permissionError
+                "Access token permission unavailable:",
+                error
             );
-
-            statusBox.innerHTML =
-                "<strong>Connected to Trimble Connect</strong><br><br>" +
-                "Select one weld in the 3D model.";
         }
+
+        box.innerHTML =
+            "<strong>Connected to Trimble Connect</strong>" +
+            "<br><br>" +
+            "Select one weld in the 3D model.";
 
     } catch (error) {
 
@@ -85,9 +61,9 @@ async function start() {
 }
 
 
-// -----------------------------------------------------
-// LISTEN FOR MODEL SELECTION
-// -----------------------------------------------------
+// --------------------------------------------------
+// TRIMBLE EVENTS
+// --------------------------------------------------
 
 async function onEvent(event, data) {
 
@@ -107,9 +83,9 @@ async function onEvent(event, data) {
 }
 
 
-// -----------------------------------------------------
+// --------------------------------------------------
 // READ SELECTED WELD
-// -----------------------------------------------------
+// --------------------------------------------------
 
 async function readWeld() {
 
@@ -118,6 +94,7 @@ async function readWeld() {
         const selection =
             await API.viewer.getSelection();
 
+
         if (
             !selection ||
             selection.length === 0
@@ -125,17 +102,16 @@ async function readWeld() {
 
             currentWeld = null;
 
-            document
-                .getElementById("status")
+            document.getElementById("status")
                 .innerHTML =
-                    "Select one weld in the model.";
+                "Select one weld in the model.";
 
             return;
         }
 
 
-        const selected =
-            selection[0];
+        const selected = selection[0];
+
 
         if (
             !selected.objectRuntimeIds ||
@@ -152,12 +128,78 @@ async function readWeld() {
             selected.objectRuntimeIds[0];
 
 
-        const properties =
+        const result =
             await API.viewer.getObjectProperties(
                 modelId,
                 [runtimeId]
             );
 
+
+        console.log(
+            "RAW TRIMBLE PROPERTIES:",
+            result
+        );
+
+
+        // ------------------------------------------
+        // GET NORMAL MODEL PROPERTIES
+        // ------------------------------------------
+
+        const flat = {};
+
+        flatten(
+            result,
+            flat
+        );
+
+
+        // ------------------------------------------
+        // FIND WELD PROGRESS PROPERTY SET
+        // ------------------------------------------
+
+        const weldProgress =
+            findPropertySet(
+                result,
+                "Weld Progress"
+            );
+
+
+        console.log(
+            "WELD PROGRESS FOUND:",
+            weldProgress
+        );
+
+
+        let sharedStatus = "";
+        let sharedComment = "";
+
+
+        if (weldProgress) {
+
+            sharedStatus =
+                readPropertyFromSet(
+                    weldProgress,
+                    "Weld Status"
+                );
+
+
+            sharedComment =
+                readPropertyFromSet(
+                    weldProgress,
+                    "Status Comment"
+                );
+        }
+
+
+        console.log(
+            "SHARED STATUS:",
+            sharedStatus
+        );
+
+
+        // ------------------------------------------
+        // GET GUID
+        // ------------------------------------------
 
         let externalId =
             modelId + "-" + runtimeId;
@@ -171,9 +213,10 @@ async function readWeld() {
                     [runtimeId]
                 );
 
+
             if (
                 ids &&
-                ids.length
+                ids.length > 0
             ) {
 
                 externalId =
@@ -183,25 +226,15 @@ async function readWeld() {
         } catch (error) {
 
             console.warn(
-                "GUID unavailable:",
+                "Could not get GUID:",
                 error
             );
         }
 
 
-        const flat = {};
-
-        flatten(
-            properties,
-            flat
-        );
-
-
-        console.log(
-            "ALL WELD PROPERTIES:",
-            flat
-        );
-
+        // ------------------------------------------
+        // BUILD CURRENT WELD OBJECT
+        // ------------------------------------------
 
         currentWeld = {
 
@@ -283,27 +316,13 @@ async function readWeld() {
             ),
 
 
-            sharedStatus: getProp(
-                flat,
-                [
-                    "weld status"
-                ]
-            ),
+            sharedStatus:
+                sharedStatus,
 
 
-            sharedComment: getProp(
-                flat,
-                [
-                    "status comment"
-                ]
-            )
+            sharedComment:
+                sharedComment
         };
-
-
-        console.log(
-            "CURRENT WELD:",
-            currentWeld
-        );
 
 
         renderPanel();
@@ -315,28 +334,156 @@ async function readWeld() {
 }
 
 
-// -----------------------------------------------------
-// FLATTEN TRIMBLE PROPERTY DATA
-// -----------------------------------------------------
+// --------------------------------------------------
+// FIND A SPECIFIC PROPERTY SET
+// --------------------------------------------------
+
+function findPropertySet(
+    input,
+    wantedName
+) {
+
+    if (
+        input === null ||
+        input === undefined
+    ) {
+        return null;
+    }
+
+
+    if (Array.isArray(input)) {
+
+        for (const item of input) {
+
+            const found =
+                findPropertySet(
+                    item,
+                    wantedName
+                );
+
+            if (found) {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+
+    if (
+        typeof input !== "object"
+    ) {
+        return null;
+    }
+
+
+    if (
+        typeof input.name === "string" &&
+        input.name
+            .trim()
+            .toLowerCase() ===
+        wantedName
+            .trim()
+            .toLowerCase() &&
+        Array.isArray(input.properties)
+    ) {
+
+        return input;
+    }
+
+
+    for (
+        const value
+        of Object.values(input)
+    ) {
+
+        const found =
+            findPropertySet(
+                value,
+                wantedName
+            );
+
+        if (found) {
+            return found;
+        }
+    }
+
+
+    return null;
+}
+
+
+// --------------------------------------------------
+// READ PROPERTY FROM PROPERTY SET
+// --------------------------------------------------
+
+function readPropertyFromSet(
+    propertySet,
+    wantedName
+) {
+
+    if (
+        !propertySet ||
+        !Array.isArray(
+            propertySet.properties
+        )
+    ) {
+
+        return "";
+    }
+
+
+    const wanted =
+        wantedName
+            .trim()
+            .toLowerCase();
+
+
+    for (
+        const property
+        of propertySet.properties
+    ) {
+
+        if (
+            property &&
+            typeof property.name === "string" &&
+            property.name
+                .trim()
+                .toLowerCase() ===
+            wanted
+        ) {
+
+            return safeValue(
+                property.value
+            );
+        }
+    }
+
+
+    return "";
+}
+
+
+// --------------------------------------------------
+// FLATTEN MODEL PROPERTIES
+// --------------------------------------------------
 
 function flatten(
-    value,
+    input,
     output
 ) {
 
     if (
-        value === null ||
-        value === undefined
+        input === null ||
+        input === undefined
     ) {
         return;
     }
 
 
-    if (
-        Array.isArray(value)
-    ) {
+    if (Array.isArray(input)) {
 
-        value.forEach(
+        input.forEach(
             item =>
                 flatten(
                     item,
@@ -349,53 +496,36 @@ function flatten(
 
 
     if (
-        typeof value !== "object"
+        typeof input !== "object"
     ) {
         return;
     }
 
 
     if (
-        value.name !== undefined &&
-        value.value !== undefined
+        input.name !== undefined &&
+        input.value !== undefined
     ) {
 
         output[
-            String(value.name)
+            String(input.name)
                 .trim()
                 .toLowerCase()
         ] =
             safeValue(
-                value.value
+                input.value
             );
     }
 
 
-    if (
-        value.key !== undefined &&
-        value.value !== undefined
-    ) {
-
-        output[
-            String(value.key)
-                .trim()
-                .toLowerCase()
-        ] =
-            safeValue(
-                value.value
-            );
-    }
-
-
-    Object
-        .entries(value)
+    Object.entries(input)
         .forEach(
-            ([key, item]) => {
+            ([key, value]) => {
 
                 if (
-                    item !== null &&
-                    item !== undefined &&
-                    typeof item !== "object"
+                    value !== null &&
+                    value !== undefined &&
+                    typeof value !== "object"
                 ) {
 
                     output[
@@ -403,12 +533,12 @@ function flatten(
                             .trim()
                             .toLowerCase()
                     ] =
-                        safeValue(item);
+                        safeValue(value);
                 }
 
 
                 flatten(
-                    item,
+                    value,
                     output
                 );
             }
@@ -416,29 +546,34 @@ function flatten(
 }
 
 
-// -----------------------------------------------------
-// SAFE VALUES
-// -----------------------------------------------------
+// --------------------------------------------------
+// SAFE VALUE
+// --------------------------------------------------
 
 function safeValue(value) {
 
     if (
+        value === null ||
+        value === undefined
+    ) {
+        return "";
+    }
+
+
+    if (
         typeof value === "bigint"
     ) {
-
         return value.toString();
     }
 
 
-    return String(
-        value ?? ""
-    );
+    return String(value);
 }
 
 
-// -----------------------------------------------------
-// FIND PROPERTY
-// -----------------------------------------------------
+// --------------------------------------------------
+// NORMAL PROPERTY LOOKUP
+// --------------------------------------------------
 
 function getProp(
     flat,
@@ -483,9 +618,9 @@ function getProp(
 }
 
 
-// -----------------------------------------------------
-// COLOUR MODEL OBJECT
-// -----------------------------------------------------
+// --------------------------------------------------
+// APPLY STATUS COLOUR
+// --------------------------------------------------
 
 async function applyColour(status) {
 
@@ -529,27 +664,27 @@ async function applyColour(status) {
 }
 
 
-// -----------------------------------------------------
-// DRAW EXTENSION PANEL
-// -----------------------------------------------------
+// --------------------------------------------------
+// RENDER PANEL
+// --------------------------------------------------
 
 function renderPanel() {
 
-    const key =
+    const localKey =
         "weld-status-" +
         currentWeld.externalId;
 
 
-    const saved =
+    const localRecord =
         JSON.parse(
-            localStorage.getItem(key) ||
-            "null"
+            localStorage.getItem(
+                localKey
+            ) || "null"
         );
 
 
-    const validSharedStatus =
-        Object
-            .prototype
+    const sharedValid =
+        Object.prototype
             .hasOwnProperty
             .call(
                 statuses,
@@ -558,20 +693,20 @@ function renderPanel() {
 
 
     const currentStatus =
-        validSharedStatus
+        sharedValid
             ? currentWeld.sharedStatus
-            : saved?.status ||
+            : localRecord?.status ||
               "Not Started";
 
 
     const currentComment =
         currentWeld.sharedComment ||
-        saved?.comment ||
+        localRecord?.comment ||
         "";
 
 
-    const dataSource =
-        validSharedStatus
+    const source =
+        sharedValid
             ? "Shared Trimble property"
             : "Local browser prototype";
 
@@ -592,8 +727,7 @@ function renderPanel() {
 
 
     const options =
-        Object
-            .keys(statuses)
+        Object.keys(statuses)
             .map(
                 status => {
 
@@ -615,34 +749,26 @@ function renderPanel() {
             .join("");
 
 
-    document
-        .getElementById("status")
+    document.getElementById("status")
         .innerHTML = `
 
-        <div
-            style="
-                border-left:8px solid ${colour};
-                padding-left:12px;
-            "
-        >
+        <div style="
+            border-left:8px solid ${colour};
+            padding-left:12px;
+        ">
 
             <small>
                 WELD ID
             </small>
 
-
-            <div
-                style="
-                    font-size:24px;
-                    font-weight:bold;
-                    margin-bottom:16px;
-                "
-            >
-
+            <div style="
+                font-size:24px;
+                font-weight:bold;
+                margin-bottom:16px;
+            ">
                 ${escapeHtml(
                     currentWeld.weldId
                 )}
-
             </div>
 
 
@@ -651,12 +777,10 @@ function renderPanel() {
                 currentWeld.type
             )}
 
-
             ${field(
                 "Purpose",
                 currentWeld.purpose
             )}
-
 
             ${field(
                 "Length",
@@ -665,7 +789,6 @@ function renderPanel() {
                 )
             )}
 
-
             ${field(
                 "Throat",
                 withMM(
@@ -673,18 +796,15 @@ function renderPanel() {
                 )
             )}
 
-
             ${field(
                 "Cage",
                 currentWeld.cage
             )}
 
-
             ${field(
                 "Detail",
                 currentWeld.detail
             )}
-
 
             ${field(
                 "Father ID",
@@ -700,26 +820,27 @@ function renderPanel() {
             </strong>
 
 
-            <div
-                style="
-                    font-size:11px;
-                    color:#666;
-                    margin-top:4px;
-                    margin-bottom:8px;
-                "
-            >
+            <div style="
+                font-size:11px;
+                color:${
+                    sharedValid
+                        ? "#006b3c"
+                        : "#666"
+                };
+                margin-top:4px;
+                margin-bottom:8px;
+            ">
 
                 Source:
-                ${escapeHtml(
-                    dataSource
-                )}
+                <strong>
+                    ${escapeHtml(source)}
+                </strong>
 
             </div>
 
 
             <select
                 id="weldStatusSelect"
-
                 style="
                     width:100%;
                     padding:9px;
@@ -739,9 +860,7 @@ function renderPanel() {
 
             <textarea
                 id="statusComment"
-
                 rows="3"
-
                 style="
                     width:100%;
                     box-sizing:border-box;
@@ -754,7 +873,6 @@ function renderPanel() {
 
             <button
                 id="saveButton"
-
                 style="
                     width:100%;
                     margin-top:12px;
@@ -775,7 +893,6 @@ function renderPanel() {
 
             <div
                 id="saveMessage"
-
                 style="
                     margin-top:10px;
                 "
@@ -826,6 +943,22 @@ function renderPanel() {
 
 
                 <strong>
+                    Weld Progress detected
+                </strong>
+
+                <br>
+
+                ${
+                    sharedValid
+                        ? "YES"
+                        : "NO"
+                }
+
+
+                <br><br>
+
+
+                <strong>
                     Shared Weld Status
                 </strong>
 
@@ -853,13 +986,11 @@ function renderPanel() {
 }
 
 
-// -----------------------------------------------------
-// SAVE STATUS
+// --------------------------------------------------
+// SAVE
 //
-// IMPORTANT:
-// Still uses localStorage for WRITE.
-// Shared Trimble writing comes next.
-// -----------------------------------------------------
+// STILL LOCAL WRITE FOR THIS TEST.
+// --------------------------------------------------
 
 async function saveStatus() {
 
@@ -911,31 +1042,20 @@ async function saveStatus() {
     );
 
 
-    try {
-
-        await applyColour(
-            status
-        );
-
-    } catch (error) {
-
-        console.error(
-            "Colour error:",
-            error
-        );
-    }
+    await applyColour(
+        status
+    );
 
 
     const message =
-        document
-            .getElementById(
-                "saveMessage"
-            );
+        document.getElementById(
+            "saveMessage"
+        );
 
 
     message.innerHTML =
         "<strong>Status saved locally.</strong><br>" +
-        "Shared Trimble write is not enabled yet.";
+        "Shared Trimble write comes next.";
 
 
     message.style.color =
@@ -943,9 +1063,9 @@ async function saveStatus() {
 }
 
 
-// -----------------------------------------------------
-// FIELD DISPLAY
-// -----------------------------------------------------
+// --------------------------------------------------
+// DISPLAY FIELD
+// --------------------------------------------------
 
 function field(
     label,
@@ -959,11 +1079,9 @@ function field(
 
     return `
 
-        <div
-            style="
-                margin-bottom:10px;
-            "
-        >
+        <div style="
+            margin-bottom:10px;
+        ">
 
             <small>
                 ${escapeHtml(
@@ -982,9 +1100,9 @@ function field(
 }
 
 
-// -----------------------------------------------------
-// ADD MM
-// -----------------------------------------------------
+// --------------------------------------------------
+// UNIT
+// --------------------------------------------------
 
 function withMM(value) {
 
@@ -1002,7 +1120,6 @@ function withMM(value) {
             .toLowerCase()
             .includes("mm")
     ) {
-
         return text;
     }
 
@@ -1014,9 +1131,9 @@ function withMM(value) {
 }
 
 
-// -----------------------------------------------------
+// --------------------------------------------------
 // HTML SAFETY
-// -----------------------------------------------------
+// --------------------------------------------------
 
 function escapeHtml(value) {
 
@@ -1046,20 +1163,20 @@ function escapeHtml(value) {
 }
 
 
-// -----------------------------------------------------
-// ERROR DISPLAY
-// -----------------------------------------------------
+// --------------------------------------------------
+// ERROR
+// --------------------------------------------------
 
 function showError(error) {
 
     console.error(error);
 
 
-    document
-        .getElementById("status")
+    document.getElementById("status")
         .innerHTML =
 
-        "<strong>Error</strong><br><br>" +
+        "<strong>Error</strong>" +
+        "<br><br>" +
 
         escapeHtml(
             error?.message ||
@@ -1068,9 +1185,9 @@ function showError(error) {
 }
 
 
-// -----------------------------------------------------
-// START
-// -----------------------------------------------------
+// --------------------------------------------------
+// GO
+// --------------------------------------------------
 
 window.addEventListener(
     "load",
