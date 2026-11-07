@@ -12,8 +12,11 @@ const statuses = {
 };
 
 async function start() {
+    const statusBox =
+        document.getElementById("status");
+
     try {
-        document.getElementById("status").innerHTML =
+        statusBox.innerHTML =
             "Connecting to Trimble Connect...";
 
         API = await TrimbleConnectWorkspace.connect(
@@ -21,9 +24,62 @@ async function start() {
             onEvent
         );
 
-        document.getElementById("status").innerHTML =
+        statusBox.innerHTML =
             "<strong>Connected to Trimble Connect</strong><br><br>" +
-            "Select one weld in the 3D model.";
+            "Checking permission for shared project data...";
+
+        try {
+            const accessToken =
+                await API.extension.requestPermission(
+                    "accesstoken"
+                );
+
+            if (
+                accessToken &&
+                typeof accessToken === "string"
+            ) {
+                window.trimbleAccessToken =
+                    accessToken;
+
+                console.log(
+                    "Trimble access token received successfully."
+                );
+
+                statusBox.innerHTML =
+                    "<strong>Connected to Trimble Connect</strong><br>" +
+                    "<strong>Shared-data permission granted</strong>" +
+                    "<br><br>" +
+                    "Select one weld in the 3D model.";
+            } else {
+                console.warn(
+                    "Permission response received, but no token was returned."
+                );
+
+                statusBox.innerHTML =
+                    "<strong>Connected to Trimble Connect</strong><br>" +
+                    "<strong>Shared-data permission not yet available</strong>" +
+                    "<br><br>" +
+                    "Local weld tracking still works. " +
+                    "Select one weld in the model.";
+            }
+
+        } catch (permissionError) {
+            console.error(
+                "Access-token permission failed:",
+                permissionError
+            );
+
+            statusBox.innerHTML =
+                "<strong>Connected to Trimble Connect</strong><br>" +
+                "<strong>Shared-data permission failed</strong>" +
+                "<br><br>" +
+                escapeHtml(
+                    permissionError?.message ||
+                    String(permissionError)
+                ) +
+                "<br><br>" +
+                "Local weld tracking is still available.";
+        }
 
     } catch (error) {
         showError(error);
