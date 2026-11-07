@@ -9,7 +9,7 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Trimble Region Test</title>
+    <title>Trimble Property Set Library Test</title>
 
     <style>
         body {
@@ -50,29 +50,26 @@
 
 <div class="box">
 
-    <h2>Trimble Region Test</h2>
+    <h2>Property Set Library Test</h2>
 
     <p>
-        Find project information and available
-        Trimble regional services.
+        Discover the Europe Property Set Service and retrieve
+        the available Property Set libraries.
     </p>
 
     <button id="testButton">
-        RUN REGION TEST
+        FIND PROPERTY SET LIBRARIES
     </button>
 
     <pre id="result">Waiting...</pre>
 
 </div>
 
-
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
-
 
 <script>
 
 let API = null;
-
 
 async function start() {
 
@@ -90,14 +87,15 @@ async function start() {
             );
 
         result.textContent =
-            "Connected to Trimble Connect.\n\n" +
-            "Click RUN REGION TEST.";
+            "Connected.\n\n" +
+            "Click FIND PROPERTY SET LIBRARIES.";
 
     } catch (error) {
 
-        result.textContent =
-            "Connection failed:\n\n" +
-            error.message;
+        showFailure(
+            "Connection failed",
+            error
+        );
     }
 }
 
@@ -110,19 +108,26 @@ async function runTest() {
     try {
 
         result.textContent =
-            "Getting current Trimble project...";
+            "Getting current project...";
 
 
         const project =
             await API.project.getProject();
 
 
+        const projectId =
+            project.id;
+
+
+        const projectLocation =
+            String(
+                project.location || ""
+            ).toLowerCase();
+
+
         result.textContent =
-            "PROJECT\n" +
-            "--------------------\n" +
-            safeJson(project) +
-            "\n\n" +
-            "Requesting access token...";
+            "Project received.\n\n" +
+            "Requesting access permission...";
 
 
         const token =
@@ -134,21 +139,18 @@ async function runTest() {
         if (!token) {
 
             throw new Error(
-                "Trimble did not return an access token."
+                "No access token was returned."
             );
         }
 
 
         result.textContent =
-            "PROJECT\n" +
-            "--------------------\n" +
-            safeJson(project) +
-            "\n\n" +
-            "Access token: RECEIVED\n\n" +
-            "Discovering Trimble regions...";
+            "Project received.\n" +
+            "Access permission received.\n\n" +
+            "Discovering regional services...";
 
 
-        const response =
+        const regionsResponse =
             await fetch(
                 "https://app.connect.trimble.com/tc/api/2.0/regions",
                 {
@@ -165,58 +167,220 @@ async function runTest() {
             );
 
 
-        const text =
-            await response.text();
+        if (!regionsResponse.ok) {
+
+            throw new Error(
+                "Regions API returned HTTP " +
+                regionsResponse.status
+            );
+        }
 
 
-        let data;
+        const regions =
+            await regionsResponse.json();
+
+
+        const europeRegion =
+            findEuropeRegion(
+                regions,
+                projectLocation
+            );
+
+
+        if (!europeRegion) {
+
+            throw new Error(
+                "Could not find the Europe region."
+            );
+        }
+
+
+        const psetApi =
+            europeRegion["pset-api"] ||
+            europeRegion.psetApi ||
+            europeRegion.services?.["pset-api"] ||
+            europeRegion.services?.psetApi;
+
+
+        if (!psetApi) {
+
+            result.textContent =
+                "PROJECT\n" +
+                "--------------------\n" +
+                safeJson(project) +
+                "\n\n" +
+
+                "EUROPE REGION FOUND\n" +
+                "--------------------\n" +
+                safeJson(europeRegion) +
+                "\n\n" +
+
+                "ERROR\n" +
+                "--------------------\n" +
+                "No pset-api field was found.";
+
+            return;
+        }
+
+
+        const baseUrl =
+            String(psetApi).endsWith("/")
+                ? String(psetApi)
+                : String(psetApi) + "/";
+
+
+        const librariesUrl =
+            baseUrl + "libs";
+
+
+        result.textContent =
+            "PROJECT\n" +
+            "--------------------\n" +
+            "ID: " + projectId + "\n" +
+            "Location: " + projectLocation + "\n\n" +
+
+            "EUROPE PROPERTY SET API\n" +
+            "--------------------\n" +
+            baseUrl +
+            "\n\n" +
+
+            "Loading libraries...";
+
+
+        const librariesResponse =
+            await fetch(
+                librariesUrl,
+                {
+                    method: "GET",
+
+                    headers: {
+                        "Accept":
+                            "application/json",
+
+                        "Authorization":
+                            "Bearer " + token,
+
+                        "X-TC-Project-Id":
+                            projectId
+                    }
+                }
+            );
+
+
+        const librariesText =
+            await librariesResponse.text();
+
+
+        let librariesData;
 
 
         try {
 
-            data =
-                JSON.parse(text);
+            librariesData =
+                JSON.parse(
+                    librariesText
+                );
 
         } catch {
 
-            data =
-                text;
+            librariesData =
+                librariesText;
         }
 
 
         result.textContent =
             "PROJECT\n" +
             "--------------------\n" +
-            safeJson(project) +
+            "ID: " + projectId + "\n" +
+            "Location: " + projectLocation + "\n\n" +
+
+            "EUROPE PROPERTY SET API\n" +
+            "--------------------\n" +
+            baseUrl +
             "\n\n" +
 
-            "ACCESS TOKEN\n" +
+            "LIBRARY REQUEST\n" +
             "--------------------\n" +
-            "RECEIVED\n\n" +
-
-            "REGIONS API\n" +
-            "--------------------\n" +
-            "HTTP status: " +
-            response.status +
+            librariesUrl +
             "\n\n" +
 
-            safeJson(data);
+            "HTTP STATUS\n" +
+            "--------------------\n" +
+            librariesResponse.status +
+            "\n\n" +
+
+            "RESPONSE\n" +
+            "--------------------\n" +
+            safeJson(
+                librariesData
+            );
 
 
     } catch (error) {
 
-        console.error(error);
-
-        result.textContent =
-            "TEST FAILED\n" +
-            "--------------------\n\n" +
-            (
-                error &&
-                error.message
-                    ? error.message
-                    : String(error)
-            );
+        showFailure(
+            "Property Set library test failed",
+            error
+        );
     }
+}
+
+
+function findEuropeRegion(
+    regions,
+    projectLocation
+) {
+
+    if (!Array.isArray(regions)) {
+        return null;
+    }
+
+
+    const exact =
+        regions.find(region => {
+
+            const values =
+                [
+                    region.location,
+                    region.name,
+                    region.trmRegion,
+                    region.region,
+                    region.awsRegion
+                ]
+                .filter(Boolean)
+                .map(value =>
+                    String(value)
+                        .toLowerCase()
+                );
+
+
+            return values.some(value =>
+                value === projectLocation ||
+                value === "europe" ||
+                value === "eu" ||
+                value.includes("europe")
+            );
+        });
+
+
+    if (exact) {
+        return exact;
+    }
+
+
+    return regions.find(region => {
+
+        const text =
+            safeJson(region)
+                .toLowerCase();
+
+
+        return (
+            text.includes("europe") ||
+            text.includes("\"eu\"") ||
+            text.includes("app21")
+        );
+    });
 }
 
 
@@ -237,6 +401,31 @@ function safeJson(value) {
 
         return String(value);
     }
+}
+
+
+function showFailure(
+    title,
+    error
+) {
+
+    console.error(error);
+
+
+    document
+        .getElementById("result")
+        .textContent =
+
+        title +
+        "\n" +
+        "--------------------\n\n" +
+
+        (
+            error &&
+            error.message
+                ? error.message
+                : String(error)
+        );
 }
 
 
