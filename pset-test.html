@@ -9,206 +9,251 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Property Set Test</title>
+    <title>Trimble Region Test</title>
 
     <style>
         body {
             font-family: Arial, sans-serif;
-            padding: 20px;
+            padding: 15px;
             background: #f4f4f4;
         }
 
         .box {
             background: white;
-            padding: 20px;
+            padding: 16px;
             border-radius: 6px;
         }
 
         button {
-            padding: 10px 16px;
+            width: 100%;
+            padding: 11px;
             background: #0063a6;
             color: white;
             border: none;
             border-radius: 4px;
+            font-weight: bold;
             cursor: pointer;
         }
 
         pre {
-            margin-top: 16px;
-            padding: 12px;
+            margin-top: 15px;
+            padding: 10px;
             background: #eeeeee;
             white-space: pre-wrap;
             word-break: break-word;
+            font-size: 12px;
         }
     </style>
 </head>
 
 <body>
 
-    <div class="box">
+<div class="box">
 
-        <h2>Trimble Property Set Test</h2>
+    <h2>Trimble Region Test</h2>
 
-        <p>
-            This page checks whether the extension can retrieve
-            Property Set libraries.
-        </p>
+    <p>
+        Find project information and available
+        Trimble regional services.
+    </p>
 
-        <button id="testButton">
-            TEST PROPERTY SET ACCESS
-        </button>
+    <button id="testButton">
+        RUN REGION TEST
+    </button>
 
-        <pre id="result">
-Waiting...
-        </pre>
+    <pre id="result">Waiting...</pre>
 
-    </div>
+</div>
 
 
-    <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+<script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 
 
-    <script>
+<script>
 
-        let API = null;
-
-
-        async function initialise() {
-
-            const result =
-                document.getElementById("result");
+let API = null;
 
 
-            try {
+async function start() {
 
-                result.textContent =
-                    "Connecting to Trimble Connect...";
+    const result =
+        document.getElementById("result");
 
+    try {
 
-                API =
-                    await TrimbleConnectWorkspace.connect(
-                        window.parent
-                    );
+        result.textContent =
+            "Connecting to Trimble Connect...";
 
+        API =
+            await TrimbleConnectWorkspace.connect(
+                window.parent
+            );
 
-                result.textContent =
-                    "Connected.\n\n" +
-                    "Click TEST PROPERTY SET ACCESS.";
+        result.textContent =
+            "Connected to Trimble Connect.\n\n" +
+            "Click RUN REGION TEST.";
 
+    } catch (error) {
 
-            } catch (error) {
-
-                result.textContent =
-                    "Connection error:\n\n" +
-                    error.message;
-            }
-        }
-
-
-        async function testPropertySets() {
-
-            const result =
-                document.getElementById("result");
+        result.textContent =
+            "Connection failed:\n\n" +
+            error.message;
+    }
+}
 
 
-            try {
+async function runTest() {
 
-                result.textContent =
-                    "Requesting permission...";
+    const result =
+        document.getElementById("result");
 
+    try {
 
-                const token =
-                    await API.extension.requestPermission(
-                        "accesstoken"
-                    );
-
-
-                if (!token) {
-
-                    throw new Error(
-                        "No access token was returned."
-                    );
-                }
+        result.textContent =
+            "Getting current Trimble project...";
 
 
-                result.textContent =
-                    "Permission granted.\n\n" +
-                    "Loading Property Set libraries...";
+        const project =
+            await API.project.getProject();
 
 
-                const response =
-                    await fetch(
-                        "https://pset-api.connect.trimble.com/v1/libs",
-                        {
-                            method: "GET",
-
-                            headers: {
-                                "Accept": "application/json",
-
-                                "Authorization":
-                                    "Bearer " + token
-                            }
-                        }
-                    );
+        result.textContent =
+            "PROJECT\n" +
+            "--------------------\n" +
+            safeJson(project) +
+            "\n\n" +
+            "Requesting access token...";
 
 
-                const responseText =
-                    await response.text();
-
-
-                let responseData;
-
-
-                try {
-
-                    responseData =
-                        JSON.parse(responseText);
-
-                } catch {
-
-                    responseData =
-                        responseText;
-                }
-
-
-                result.textContent =
-                    "HTTP status: " +
-                    response.status +
-                    "\n\n" +
-
-                    JSON.stringify(
-                        responseData,
-                        null,
-                        2
-                    );
-
-
-            } catch (error) {
-
-                console.error(error);
-
-
-                result.textContent =
-                    "Property Set test failed:\n\n" +
-                    error.message;
-            }
-        }
-
-
-        document
-            .getElementById("testButton")
-            .addEventListener(
-                "click",
-                testPropertySets
+        const token =
+            await API.extension.requestPermission(
+                "accesstoken"
             );
 
 
-        window.addEventListener(
-            "load",
-            initialise
+        if (!token) {
+
+            throw new Error(
+                "Trimble did not return an access token."
+            );
+        }
+
+
+        result.textContent =
+            "PROJECT\n" +
+            "--------------------\n" +
+            safeJson(project) +
+            "\n\n" +
+            "Access token: RECEIVED\n\n" +
+            "Discovering Trimble regions...";
+
+
+        const response =
+            await fetch(
+                "https://app.connect.trimble.com/tc/api/2.0/regions",
+                {
+                    method: "GET",
+
+                    headers: {
+                        "Accept":
+                            "application/json",
+
+                        "Authorization":
+                            "Bearer " + token
+                    }
+                }
+            );
+
+
+        const text =
+            await response.text();
+
+
+        let data;
+
+
+        try {
+
+            data =
+                JSON.parse(text);
+
+        } catch {
+
+            data =
+                text;
+        }
+
+
+        result.textContent =
+            "PROJECT\n" +
+            "--------------------\n" +
+            safeJson(project) +
+            "\n\n" +
+
+            "ACCESS TOKEN\n" +
+            "--------------------\n" +
+            "RECEIVED\n\n" +
+
+            "REGIONS API\n" +
+            "--------------------\n" +
+            "HTTP status: " +
+            response.status +
+            "\n\n" +
+
+            safeJson(data);
+
+
+    } catch (error) {
+
+        console.error(error);
+
+        result.textContent =
+            "TEST FAILED\n" +
+            "--------------------\n\n" +
+            (
+                error &&
+                error.message
+                    ? error.message
+                    : String(error)
+            );
+    }
+}
+
+
+function safeJson(value) {
+
+    try {
+
+        return JSON.stringify(
+            value,
+            (key, item) =>
+                typeof item === "bigint"
+                    ? item.toString()
+                    : item,
+            2
         );
 
-    </script>
+    } catch {
+
+        return String(value);
+    }
+}
+
+
+document
+    .getElementById("testButton")
+    .addEventListener(
+        "click",
+        runTest
+    );
+
+
+window.addEventListener(
+    "load",
+    start
+);
+
+</script>
 
 </body>
 
