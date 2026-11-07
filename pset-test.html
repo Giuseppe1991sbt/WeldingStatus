@@ -150,8 +150,7 @@ async function runTest() {
             "Discovering regional services...";
 
 
-        const regionsResponse =
-            await fetch(
+        const regionsResponse = await fetch(
                 "https://app.connect.trimble.com/tc/api/2.0/regions",
                 {
                     method: "GET",
