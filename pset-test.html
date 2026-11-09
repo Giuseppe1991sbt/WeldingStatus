@@ -121,7 +121,15 @@ async function start() {
             await TrimbleConnectWorkspace.connect(
                 window.parent
             );
+console.log("WORKSPACE API:", API);
+console.log("PROJECT API:", API && API.project);
 
+if (!API || !API.project) {
+    throw new Error(
+        "Workspace connected, but Project API is unavailable. " +
+        "Check that Property Set Test is running as a Trimble project extension."
+    );
+}
         const project =
             await API.project.getProject();
 
