@@ -1338,7 +1338,7 @@ const writeBody = {
         latestSchemaVersion,
 
     v:
-        latestVersion + 1
+        latestVersion
 };
 
 
