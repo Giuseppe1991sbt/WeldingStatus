@@ -1276,11 +1276,7 @@ async function saveStatus() {
         // MATCH NATIVE TRIMBLE PAYLOAD
         // ------------------------------------------
 
-        const existingProps =
-    latestPset &&
-    latestPset.props &&
-    typeof latestPset.props === "object"
-        ? { ...latestPset.props }
+        
         const existingProps =
     latestPset &&
     latestPset.props &&
