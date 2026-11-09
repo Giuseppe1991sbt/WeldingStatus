@@ -1276,30 +1276,39 @@ async function saveStatus() {
         // MATCH NATIVE TRIMBLE PAYLOAD
         // ------------------------------------------
 
-        const writeBody = {
+        const existingProps =
+    latestPset &&
+    latestPset.props &&
+    typeof latestPset.props === "object"
+        ? { ...latestPset.props }
+        : {};
 
-            link:
-                currentWeld.psetLink,
+existingProps[
+    WELD_STATUS_PROPERTY_ID
+] =
+    status;
 
-            libId:
-                LIBRARY_ID,
 
-            defId:
-                DEFINITION_ID,
+const writeBody = {
 
-            props: {},
+    link:
+        currentWeld.psetLink,
 
-            schemaV:
-                latestSchemaVersion,
+    libId:
+        LIBRARY_ID,
 
-            v:
-                latestVersion
-        };
+    defId:
+        DEFINITION_ID,
 
-        writeBody.props[
-            WELD_STATUS_PROPERTY_ID
-        ] =
-            status;
+    props:
+        existingProps,
+
+    schemaV:
+        latestSchemaVersion,
+
+    v:
+        latestVersion
+};
 
 
         console.log(
