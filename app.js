@@ -30,31 +30,107 @@ async function start() {
             onEvent
         );
 
-        try {
+        box.innerHTML =
+            "Connected. Requesting Trimble permission...";
 
-            const token =
-                await API.extension.requestPermission(
-                    "accesstoken"
-                );
+        // ------------------------------------------
+        // GET CURRENT PROJECT
+        // ------------------------------------------
 
-            if (token) {
-                window.trimbleAccessToken = token;
-            }
+        const project =
+            await API.project.getProject();
 
-        } catch (error) {
+        console.log(
+            "CURRENT TRIMBLE PROJECT:",
+            project
+        );
 
-            console.warn(
-                "Access token permission unavailable:",
-                error
+        // ------------------------------------------
+        // REQUEST TRIMBLE ACCESS TOKEN
+        // ------------------------------------------
+
+        const token =
+            await API.extension.requestPermission(
+                "accesstoken"
+            );
+
+        console.log(
+            "ACCESS TOKEN RECEIVED:",
+            Boolean(token)
+        );
+
+        console.log(
+            "ACCESS TOKEN TYPE:",
+            typeof token
+        );
+
+        console.log(
+            "ACCESS TOKEN LENGTH:",
+            typeof token === "string"
+                ? token.length
+                : "Not a string"
+        );
+
+        if (!token) {
+
+            throw new Error(
+                "Trimble Connect did not return an access token."
             );
         }
 
-        box.innerHTML =
-            "<strong>Connected to Trimble Connect</strong>" +
-            "<br><br>" +
-            "Select one weld in the 3D model.";
+        window.trimbleAccessToken =
+            token;
+
+        // ------------------------------------------
+        // CONNECTION TEST SUCCESSFUL
+        // ------------------------------------------
+
+        box.innerHTML = `
+
+            <strong style="color:#006b3c;">
+                Trimble connection successful
+            </strong>
+
+            <br><br>
+
+            <strong>Project name:</strong>
+            <br>
+            ${escapeHtml(
+                project?.name ||
+                "Not returned"
+            )}
+
+            <br><br>
+
+            <strong>Project ID:</strong>
+            <br>
+            ${escapeHtml(
+                project?.id ||
+                project?.projectId ||
+                "Not returned"
+            )}
+
+            <br><br>
+
+            <strong>Access token:</strong>
+            <br>
+            ${
+                token
+                    ? "RECEIVED"
+                    : "NOT RECEIVED"
+            }
+
+            <br><br>
+
+            Select one weld in the 3D model.
+        `;
 
     } catch (error) {
+
+        console.error(
+            "START-UP TEST FAILED:",
+            error
+        );
 
         showError(error);
     }
@@ -110,7 +186,8 @@ async function readWeld() {
         }
 
 
-        const selected = selection[0];
+        const selected =
+            selection[0];
 
 
         if (
@@ -1120,6 +1197,7 @@ function withMM(value) {
             .toLowerCase()
             .includes("mm")
     ) {
+
         return text;
     }
 
