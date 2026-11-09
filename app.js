@@ -1281,13 +1281,48 @@ async function saveStatus() {
     latestPset.props &&
     typeof latestPset.props === "object"
         ? { ...latestPset.props }
+        const existingProps =
+    latestPset &&
+    latestPset.props &&
+    typeof latestPset.props === "object"
+        ? { ...latestPset.props }
         : {};
+
+
+// --------------------------------------------------
+// WELD STATUS
+// --------------------------------------------------
 
 existingProps[
     WELD_STATUS_PROPERTY_ID
 ] =
     status;
 
+
+// --------------------------------------------------
+// REQUIRED WELD PROGRESS PROPERTIES
+// Values confirmed from native Trimble PATCH
+// --------------------------------------------------
+
+existingProps[
+    "prop_48mef50zi9v7bm5b5mi5v9f961975kfo"
+] =
+    existingProps[
+        "prop_48mef50zi9v7bm5b5mi5v9f961975kfo"
+    ] ?? "Not Required";
+
+
+existingProps[
+    "prop_uwxnu0maffve5478u3rse3bkbd5h4sk"
+] =
+    existingProps[
+        "prop_uwxnu0maffve5478u3rse3bkbd5h4sk"
+    ] ?? false;
+
+
+// --------------------------------------------------
+// BUILD PATCH PAYLOAD
+// --------------------------------------------------
 
 const writeBody = {
 
@@ -1307,7 +1342,7 @@ const writeBody = {
         latestSchemaVersion,
 
     v:
-        latestVersion
+        latestVersion + 1
 };
 
 
