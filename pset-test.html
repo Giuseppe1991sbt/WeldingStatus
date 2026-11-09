@@ -229,7 +229,9 @@ async function runTest() {
 
 
         const librariesUrl =
-            baseUrl + "libs";
+    baseUrl +
+    "libs/" +
+    encodeURIComponent(projectId);
 
 
         result.textContent =
