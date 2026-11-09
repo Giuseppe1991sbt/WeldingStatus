@@ -1,0 +1,13 @@
+{
+  "title": "Property Set Test",
+  "url": "https://giuseppe1991sbt.github.io/WeldingStatus/pset-test.html",
+  "icon": "https://giuseppe1991sbt.github.io/WeldingStatus/",
+  "infoUrl": "https://giuseppe1991sbt.github.io/WeldingStatus/",
+  "command": "open",
+  "heightPx": "600",
+  "schemaVersion": "1.0",
+  "extensionType": [
+    "project",
+    "3dviewer"
+  ]
+}
