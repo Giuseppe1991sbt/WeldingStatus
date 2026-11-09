@@ -64,14 +64,13 @@
         Property Set stored in Trimble.
     </p>
 
-    <button id="writeButton">
+    <button id="writeButton" disabled>
         WRITE PART COMPLETED
     </button>
 
-    <pre id="result">Waiting...</pre>
+    <pre id="result">Loading JavaScript...</pre>
 
 </div>
-
 
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 
@@ -92,15 +91,15 @@ const LIBRARY_ID =
 const DEFINITION_ID =
     "uvq7wy0xgyb2o2sxornh5juwyngsn76w";
 
-// Internal property key for Weld Status
+// Internal ID for the Weld Status dropdown
 const WELD_STATUS_PROPERTY_ID =
     "prop_k57dohz4v8wj0sploxwvjt8jhn7jn605";
 
-// Test weld GUID
+// MS GUID shown for the selected test weld
 const WELD_GUID =
     "f83962c4-3acc-4606-9a48-f17d3a4a2998";
 
-// Shared PSet link controlled by our tracker
+// Link for the shared Property Set instance
 const WELD_LINK =
     "frn:entity:" + WELD_GUID;
 
@@ -113,6 +112,9 @@ async function start() {
 
     const result =
         document.getElementById("result");
+
+    const button =
+        document.getElementById("writeButton");
 
     try {
 
@@ -128,7 +130,8 @@ async function start() {
             await API.project.getProject();
 
         result.textContent =
-            "Connected to Trimble Connect.\n\n" +
+            "CONNECTED\n" +
+            "================================\n\n" +
 
             "Project:\n" +
             (
@@ -137,7 +140,13 @@ async function start() {
                 "Not returned"
             ) +
 
-            "\n\nReady to perform the real shared write.";
+            "\n\nTest weld GUID:\n" +
+            WELD_GUID +
+
+            "\n\nReady to perform the shared write.";
+
+        button.disabled =
+            false;
 
     } catch (error) {
 
@@ -155,18 +164,16 @@ async function start() {
 
 async function writeSharedStatus() {
 
-    const result =
-        document.getElementById("result");
-
     const button =
         document.getElementById("writeButton");
 
-    button.disabled = true;
+    button.disabled =
+        true;
 
     try {
 
         // ------------------------------------------
-        // PROJECT
+        // GET CURRENT PROJECT
         // ------------------------------------------
 
         showStep(
@@ -178,12 +185,12 @@ async function writeSharedStatus() {
 
         const projectLocation =
             String(
-                project.location || ""
+                project?.location || ""
             ).toLowerCase();
 
 
         // ------------------------------------------
-        // TOKEN
+        // GET ACCESS TOKEN
         // ------------------------------------------
 
         showStep(
@@ -204,7 +211,7 @@ async function writeSharedStatus() {
 
 
         // ------------------------------------------
-        // REGIONS
+        // GET REGIONAL SERVICES
         // ------------------------------------------
 
         showStep(
@@ -229,9 +236,9 @@ async function writeSharedStatus() {
 
         if (!regionsResponse.ok) {
 
-            throw new Error(
-                "Regions API returned HTTP " +
-                regionsResponse.status
+            throw await createApiError(
+                "Regions request",
+                regionsResponse
             );
         }
 
@@ -247,13 +254,13 @@ async function writeSharedStatus() {
         if (!europeRegion) {
 
             throw new Error(
-                "Could not identify the Europe region."
+                "Could not identify the Trimble Europe region."
             );
         }
 
 
         // ------------------------------------------
-        // PROPERTY SET API
+        // GET PROPERTY SET API URL
         // ------------------------------------------
 
         const psetApi =
@@ -276,7 +283,7 @@ async function writeSharedStatus() {
 
 
         // ------------------------------------------
-        // REAL PSET URL
+        // BUILD REAL PROPERTY SET URL
         // ------------------------------------------
 
         const psetUrl =
@@ -289,38 +296,41 @@ async function writeSharedStatus() {
             encodeURIComponent(DEFINITION_ID);
 
 
-        result.textContent =
-            "WRITING SHARED STATUS\n" +
-            "================================\n\n" +
-
-            "Library:\n" +
-            LIBRARY_ID +
-            "\n\n" +
-
-            "Definition:\n" +
-            DEFINITION_ID +
-            "\n\n" +
-
-            "Weld link:\n" +
-            WELD_LINK +
-            "\n\n" +
-
-            "New value:\n" +
-            "Part Completed\n\n" +
-
-            "Sending PATCH request...";
-
-
         // ------------------------------------------
-        // WRITE PART COMPLETED
+        // CORRECT WRITE PAYLOAD
         // ------------------------------------------
 
         const writeBody = {
-    props: {
-        [WELD_STATUS_PROPERTY_ID]:
-            "Part Completed"
-    }
-};
+            props: {
+                [WELD_STATUS_PROPERTY_ID]:
+                    "Part Completed"
+            }
+        };
+
+
+        showStep(
+            "WRITING TO TRIMBLE CLOUD\n" +
+            "================================\n\n" +
+
+            "Weld:\n" +
+            WELD_GUID +
+            "\n\n" +
+
+            "New Weld Status:\n" +
+            "Part Completed\n\n" +
+
+            "Endpoint:\n" +
+           ayload:\n" +
+            safeJson(writeBody) +
+            "\n\n" +
+
+            "Sending PATCH request..."
+        );
+
+
+        // ------------------------------------------
+        // PATCH THE SHARED PROPERTY SET
+        // ------------------------------------------
 
         const writeResponse =
             await fetch(
@@ -346,28 +356,15 @@ async function writeSharedStatus() {
                 }
             );
 
-        const writeText =
-            await writeResponse.text();
-
-        let writeData;
-
-        try {
-
-            writeData =
-                writeText
-                    ? JSON.parse(writeText)
-                    : {};
-
-        } catch {
-
-            writeData =
-                writeText;
-        }
+        const writeData =
+            await readResponseData(
+                writeResponse
+            );
 
         if (!writeResponse.ok) {
 
             throw new Error(
-                "Shared write returned HTTP " +
+                "PATCH returned HTTP " +
                 writeResponse.status +
                 "\n\n" +
                 safeJson(writeData)
@@ -376,12 +373,15 @@ async function writeSharedStatus() {
 
 
         // ------------------------------------------
-        // WAIT FOR CLOUD STORAGE
+        // WAIT BRIEFLY BEFORE READ-BACK
         // ------------------------------------------
 
         showStep(
-            "Write accepted.\n\n" +
-            "Waiting for Trimble cloud synchronisation..."
+            "PATCH accepted with HTTP " +
+            writeResponse.status +
+            ".\n\n" +
+
+            "Waiting for Trimble cloud read-back..."
         );
 
         await wait(
@@ -390,7 +390,7 @@ async function writeSharedStatus() {
 
 
         // ------------------------------------------
-        // READ SAME PSET BACK
+        // READ THE SAME PROPERTY SET BACK
         // ------------------------------------------
 
         const readResponse =
@@ -409,28 +409,15 @@ async function writeSharedStatus() {
                 }
             );
 
-        const readText =
-            await readResponse.text();
-
-        let readData;
-
-        try {
-
-            readData =
-                readText
-                    ? JSON.parse(readText)
-                    : {};
-
-        } catch {
-
-            readData =
-                readText;
-        }
+        const readData =
+            await readResponseData(
+                readResponse
+            );
 
         if (!readResponse.ok) {
 
             throw new Error(
-                "Write succeeded, but read-back returned HTTP " +
+                "PATCH was accepted, but GET returned HTTP " +
                 readResponse.status +
                 "\n\n" +
                 safeJson(readData)
@@ -442,14 +429,15 @@ async function writeSharedStatus() {
         // SUCCESS
         // ------------------------------------------
 
-        result.textContent =
+        showStep(
             "SHARED WRITE SUCCESSFUL\n" +
             "================================\n\n" +
 
             "Project:\n" +
             (
-                project.name ||
-                project.id
+                project?.name ||
+                project?.id ||
+                "Not returned"
             ) +
             "\n\n" +
 
@@ -467,7 +455,7 @@ async function writeSharedStatus() {
             WELD_LINK +
             "\n\n" +
 
-            "Written status:\n" +
+            "Written value:\n" +
             "Part Completed\n\n" +
 
             "PATCH HTTP status:\n" +
@@ -478,9 +466,10 @@ async function writeSharedStatus() {
             readResponse.status +
             "\n\n" +
 
-            "CLOUD DATA RETURNED\n" +
+            "TRIMBLE CLOUD RESPONSE\n" +
             "--------------------\n" +
-            safeJson(readData);
+            safeJson(readData)
+        );
 
     } catch (error) {
 
@@ -494,6 +483,54 @@ async function writeSharedStatus() {
         button.disabled =
             false;
     }
+}
+
+
+// --------------------------------------------------
+// READ API RESPONSE SAFELY
+// --------------------------------------------------
+
+async function readResponseData(response) {
+
+    const text =
+        await response.text();
+
+    if (!text) {
+        return {};
+    }
+
+    try {
+
+        return JSON.parse(text);
+
+    } catch {
+
+        return text;
+    }
+}
+
+
+// --------------------------------------------------
+// CREATE READABLE API ERROR
+// --------------------------------------------------
+
+async function createApiError(
+    operation,
+    response
+) {
+
+    const data =
+        await readResponseData(
+            response
+        );
+
+    return new Error(
+        operation +
+        " returned HTTP " +
+        response.status +
+        "\n\n" +
+        safeJson(data)
+    );
 }
 
 
@@ -571,7 +608,7 @@ function wait(milliseconds) {
 
 
 // --------------------------------------------------
-// DISPLAY STEP
+// DISPLAY CURRENT STEP
 // --------------------------------------------------
 
 function showStep(message) {
@@ -608,7 +645,7 @@ function safeJson(value) {
 
 
 // --------------------------------------------------
-// ERROR
+// DISPLAY ERROR
 // --------------------------------------------------
 
 function showFailure(
@@ -643,6 +680,23 @@ document
         "click",
         writeSharedStatus
     );
+
+
+// --------------------------------------------------
+// REPORT UNEXPECTED JAVASCRIPT ERRORS
+// --------------------------------------------------
+
+window.addEventListener(
+    "error",
+    event => {
+
+        showFailure(
+            "JavaScript error",
+            event.error ||
+            event.message
+        );
+    }
+);
 
 
 // --------------------------------------------------
