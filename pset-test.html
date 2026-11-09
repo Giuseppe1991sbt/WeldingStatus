@@ -9,7 +9,7 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Trimble Property Set Test</title>
+    <title>Trimble Shared Weld Status Test</title>
 
     <style>
         body {
@@ -35,6 +35,11 @@
             cursor: pointer;
         }
 
+        button:disabled {
+            background: #888888;
+            cursor: wait;
+        }
+
         pre {
             margin-top: 15px;
             padding: 10px;
@@ -42,6 +47,8 @@
             white-space: pre-wrap;
             word-break: break-word;
             font-size: 12px;
+            max-height: 520px;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -50,15 +57,15 @@
 
 <div class="box">
 
-    <h2>Property Set Test</h2>
+    <h2>Shared Weld Status Test</h2>
 
     <p>
-        Test the Trimble Property Set Service
-        against the selected weld object.
+        Create a Trimble cloud Property Set and write a shared
+        status against the test weld.
     </p>
 
     <button id="testButton">
-        FIND WELD PROPERTY SETS
+        CREATE AND WRITE SHARED STATUS
     </button>
 
     <pre id="result">Waiting...</pre>
@@ -71,6 +78,23 @@
 <script>
 
 let API = null;
+
+
+// --------------------------------------------------
+// FIXED SHARED RESOURCE IDENTIFIERS
+// --------------------------------------------------
+
+const LIBRARY_ID =
+    "welding-status-shared-v1";
+
+const DEFINITION_ID =
+    "weld-status-tracker-v1";
+
+const WELD_GUID =
+    "f83962c4-3acc-4606-9a48-f17d3a4a2998";
+
+const WELD_LINK =
+    "frn:entity:" + WELD_GUID;
 
 
 // --------------------------------------------------
@@ -92,9 +116,19 @@ async function start() {
                 window.parent
             );
 
+        const project =
+            await API.project.getProject();
+
         result.textContent =
-            "Connected.\n\n" +
-            "Click FIND WELD PROPERTY SETS.";
+            "Connected to Trimble Connect.\n\n" +
+            "Project: " +
+            (
+                project?.name ||
+                project?.id ||
+                "Unknown"
+            ) +
+            "\n\n" +
+            "Click CREATE AND WRITE SHARED STATUS.";
 
     } catch (error) {
 
@@ -107,7 +141,7 @@ async function start() {
 
 
 // --------------------------------------------------
-// RUN TEST
+// MAIN CLOUD TEST
 // --------------------------------------------------
 
 async function runTest() {
@@ -115,14 +149,20 @@ async function runTest() {
     const result =
         document.getElementById("result");
 
+    const button =
+        document.getElementById("testButton");
+
+    button.disabled = true;
+
     try {
 
         // ------------------------------------------
-        // GET PROJECT
+        // PROJECT
         // ------------------------------------------
 
-        result.textContent =
-            "Getting current project...";
+        showStep(
+            "Getting current Trimble project..."
+        );
 
         const project =
             await API.project.getProject();
@@ -137,12 +177,12 @@ async function runTest() {
 
 
         // ------------------------------------------
-        // GET ACCESS TOKEN
+        // ACCESS TOKEN
         // ------------------------------------------
 
-        result.textContent =
-            "Project received.\n\n" +
-            "Requesting access permission...";
+        showStep(
+            "Requesting Trimble access token..."
+        );
 
         const token =
             await API.extension.requestPermission(
@@ -152,19 +192,18 @@ async function runTest() {
         if (!token) {
 
             throw new Error(
-                "No access token was returned."
+                "Trimble Connect did not return an access token."
             );
         }
 
 
         // ------------------------------------------
-        // DISCOVER REGIONS
+        // REGIONAL SERVICES
         // ------------------------------------------
 
-        result.textContent =
-            "Project received.\n" +
-            "Access permission received.\n\n" +
-            "Discovering regional services...";
+        showStep(
+            "Finding the European Trimble services..."
+        );
 
         const regionsResponse =
             await fetch(
@@ -193,11 +232,6 @@ async function runTest() {
         const regions =
             await regionsResponse.json();
 
-
-        // ------------------------------------------
-        // FIND EUROPE REGION
-        // ------------------------------------------
-
         const europeRegion =
             findEuropeRegion(
                 regions,
@@ -213,7 +247,7 @@ async function runTest() {
 
 
         // ------------------------------------------
-        // FIND PROPERTY SET API
+        // PROPERTY SET API
         // ------------------------------------------
 
         const psetApi =
@@ -224,88 +258,262 @@ async function runTest() {
 
         if (!psetApi) {
 
-            result.textContent =
-                "PROJECT\n" +
-                "--------------------\n" +
-                safeJson(project) +
-                "\n\n" +
-
-                "EUROPE REGION FOUND\n" +
-                "--------------------\n" +
-                safeJson(europeRegion) +
-                "\n\n" +
-
-                "ERROR\n" +
-                "--------------------\n" +
-                "No pset-api field was found.";
-
-            return;
+            throw new Error(
+                "The Europe region did not return a pset-api URL."
+            );
         }
-
-
-        // ------------------------------------------
-        // BUILD BASE URL
-        // ------------------------------------------
 
         const baseUrl =
             String(psetApi).endsWith("/")
                 ? String(psetApi)
                 : String(psetApi) + "/";
 
+        const headers = {
+            "Accept":
+                "application/json",
+
+            "Content-Type":
+                "application/json",
+
+            "Authorization":
+                "Bearer " + token
+        };
+
 
         // ------------------------------------------
-        // WELD WE ARE TESTING
+        // 1. CREATE OR VERIFY LIBRARY
         // ------------------------------------------
 
-        const weldGuid =
-            "f83962c4-3acc-4606-9a48-f17d3a4a2998";
+        showStep(
+            "Creating shared WeldingStatus library..."
+        );
 
-        const weldLink =
-            "frn:entity:" + weldGuid;
+        const libraryUrl =
+            baseUrl +
+            "libs/" +
+            encodeURIComponent(LIBRARY_ID);
+
+        let libraryExists =
+            await resourceExists(
+                libraryUrl,
+                token
+            );
+
+        if (!libraryExists) {
+
+            const createLibraryResponse =
+                await fetch(
+                    baseUrl + "libs",
+                    {
+                        method: "POST",
+
+                        headers:
+                            headers,
+
+                        body:
+                            JSON.stringify(
+                                {
+                                    libId:
+                                        LIBRARY_ID,
+
+                                    name:
+                                        "WeldingStatus Shared Library"
+                                }
+                            )
+                    }
+                );
+
+            if (
+                !createLibraryResponse.ok &&
+                createLibraryResponse.status !== 409
+            ) {
+
+                throw await createApiError(
+                    "Create library",
+                    createLibraryResponse
+                );
+            }
+
+            libraryExists =
+                true;
+        }
 
 
         // ------------------------------------------
-        // BUILD PSET REQUEST
+        // 2. CREATE OR VERIFY DEFINITION
         // ------------------------------------------
 
-        const psetsUrl =
+        showStep(
+            "Creating Weld Status Tracker definition..."
+        );
+
+        const definitionUrl =
+            baseUrl +
+            "libs/" +
+            encodeURIComponent(LIBRARY_ID) +
+            "/defs/" +
+            encodeURIComponent(DEFINITION_ID);
+
+        let definitionExists =
+            await resourceExists(
+                definitionUrl,
+                token
+            );
+
+        if (!definitionExists) {
+
+            const createDefinitionResponse =
+                await fetch(
+                    baseUrl +
+                    "libs/" +
+                    encodeURIComponent(LIBRARY_ID) +
+                    "/defs",
+                    {
+                        method: "POST",
+
+                        headers:
+                            headers,
+
+                        body:
+                            JSON.stringify(
+                                {
+                                    defId:
+                                        DEFINITION_ID,
+
+                                    name:
+                                        "Weld Status Tracker",
+
+                                    types: [
+                                        "BEAM"
+                                    ],
+
+                                    schema: {
+                                        props: {
+                                            status: {
+                                                type:
+                                                    "string"
+                                            },
+
+                                            comment: {
+                                                type:
+                                                    "string"
+                                            },
+
+                                            updatedAt: {
+                                                type:
+                                                    "string"
+                                            },
+
+                                            updatedBy: {
+                                                type:
+                                                    "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                    }
+                );
+
+            if (
+                !createDefinitionResponse.ok &&
+                createDefinitionResponse.status !== 409
+            ) {
+
+                throw await createApiError(
+                    "Create definition",
+                    createDefinitionResponse
+                );
+            }
+
+            definitionExists =
+                true;
+        }
+
+
+        // ------------------------------------------
+        // 3. WRITE SHARED PSET
+        // ------------------------------------------
+
+        showStep(
+            "Writing Part Completed to the Trimble cloud..."
+        );
+
+        const psetUrl =
             baseUrl +
             "psets/" +
-            encodeURIComponent(weldLink);
+            encodeURIComponent(WELD_LINK) +
+            "/" +
+            encodeURIComponent(LIBRARY_ID) +
+            "/" +
+            encodeURIComponent(DEFINITION_ID);
 
+        const writeTime =
+            new Date().toISOString();
 
-        result.textContent =
-            "PROJECT\n" +
-            "--------------------\n" +
-            "ID: " + projectId + "\n" +
-            "Location: " + projectLocation + "\n\n" +
-
-            "PROPERTY SET API\n" +
-            "--------------------\n" +
-            baseUrl + "\n\n" +
-
-            "WELD GUID\n" +
-            "--------------------\n" +
-            weldGuid + "\n\n" +
-
-            "WELD LINK\n" +
-            "--------------------\n" +
-            weldLink + "\n\n" +
-
-            "PSET REQUEST\n" +
-            "--------------------\n" +
-            psetsUrl + "\n\n" +
-
-            "Requesting attached property sets...";
-
-
-        // ------------------------------------------
-        // CALL PROPERTY SET API
-        // ------------------------------------------
-
-        const psetsResponse =
+        const writeResponse =
             await fetch(
-                psetsUrl,
+                psetUrl,
+                {
+                    method: "PATCH",
+
+                    headers:
+                        headers,
+
+                    body:
+                        JSON.stringify(
+                            {
+                                props: {
+                                    status:
+                                        "Part Completed",
+
+                                    comment:
+                                        "SYNC TEST",
+
+                                    updatedAt:
+                                        writeTime,
+
+                                    updatedBy:
+                                        "Weld Status Tracker"
+                                }
+                            }
+                        )
+                }
+            );
+
+        if (!writeResponse.ok) {
+
+            throw await createApiError(
+                "Write shared weld status",
+                writeResponse
+            );
+        }
+
+
+        // ------------------------------------------
+        // ALLOW EVENTUAL CONSISTENCY
+        // ------------------------------------------
+
+        showStep(
+            "Write accepted. Waiting for cloud synchronisation..."
+        );
+
+        await wait(
+            1500
+        );
+
+
+        // ------------------------------------------
+        // 4. READ THE PSET BACK
+        // ------------------------------------------
+
+        showStep(
+            "Reading the shared value back..."
+        );
+
+        const readResponse =
+            await fetch(
+                psetUrl,
                 {
                     method: "GET",
 
@@ -319,74 +527,185 @@ async function runTest() {
                 }
             );
 
+        const readText =
+            await readResponse.text();
 
-        // ------------------------------------------
-        // READ RESPONSE
-        // ------------------------------------------
-
-        const psetsText =
-            await psetsResponse.text();
-
-        let psetsData;
+        let readData;
 
         try {
 
-            psetsData =
+            readData =
                 JSON.parse(
-                    psetsText
+                    readText
                 );
 
         } catch {
 
-            psetsData =
-                psetsText;
+            readData =
+                readText;
+        }
+
+        if (!readResponse.ok) {
+
+            throw new Error(
+                "Read-back returned HTTP " +
+                readResponse.status +
+                "\n\n" +
+                safeJson(readData)
+            );
         }
 
 
         // ------------------------------------------
-        // DISPLAY RESULT
+        // SUCCESS
         // ------------------------------------------
 
         result.textContent =
+            "SHARED CLOUD WRITE SUCCESSFUL\n" +
+            "================================\n\n" +
+
             "PROJECT\n" +
             "--------------------\n" +
-            "ID: " + projectId + "\n" +
-            "Location: " + projectLocation + "\n\n" +
+            "Name: " +
+            (
+                project.name ||
+                "Not returned"
+            ) +
+            "\n" +
+            "ID: " +
+            projectId +
+            "\n" +
+            "Location: " +
+            projectLocation +
+            "\n\n" +
 
             "PROPERTY SET API\n" +
             "--------------------\n" +
-            baseUrl + "\n\n" +
+            baseUrl +
+            "\n\n" +
 
-            "WELD GUID\n" +
+            "LIBRARY\n" +
             "--------------------\n" +
-            weldGuid + "\n\n" +
+            LIBRARY_ID +
+            "\n\n" +
+
+            "DEFINITION\n" +
+            "--------------------\n" +
+            DEFINITION_ID +
+            "\n\n" +
 
             "WELD LINK\n" +
             "--------------------\n" +
-            weldLink + "\n\n" +
+            WELD_LINK +
+            "\n\n" +
 
-            "PSET REQUEST\n" +
+            "WRITE STATUS\n" +
             "--------------------\n" +
-            psetsUrl + "\n\n" +
+            writeResponse.status +
+            "\n\n" +
 
-            "HTTP STATUS\n" +
+            "READ STATUS\n" +
             "--------------------\n" +
-            psetsResponse.status + "\n\n" +
+            readResponse.status +
+            "\n\n" +
 
-            "RESPONSE\n" +
+            "SHARED DATA\n" +
             "--------------------\n" +
             safeJson(
-                psetsData
+                readData
             );
-
 
     } catch (error) {
 
         showFailure(
-            "Property Set test failed",
+            "Shared cloud write failed",
             error
         );
+
+    } finally {
+
+        button.disabled =
+            false;
     }
+}
+
+
+// --------------------------------------------------
+// CHECK IF RESOURCE EXISTS
+// --------------------------------------------------
+
+async function resourceExists(
+    url,
+    token
+) {
+
+    const response =
+        await fetch(
+            url,
+            {
+                method: "GET",
+
+                headers: {
+                    "Accept":
+                        "application/json",
+
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+    if (response.ok) {
+        return true;
+    }
+
+    if (response.status === 404) {
+        return false;
+    }
+
+    throw await createApiError(
+        "Check resource",
+        response
+    );
+}
+
+
+// --------------------------------------------------
+// CREATE READABLE API ERROR
+// --------------------------------------------------
+
+async function createApiError(
+    operation,
+    response
+) {
+
+    const responseText =
+        await response.text();
+
+    let responseData;
+
+    try {
+
+        responseData =
+            JSON.parse(
+                responseText
+            );
+
+    } catch {
+
+        responseData =
+            responseText;
+    }
+
+    return new Error(
+        operation +
+        " returned HTTP " +
+        response.status +
+        "\n\n" +
+        safeJson(
+            responseData
+        )
+    );
 }
 
 
@@ -402,7 +721,6 @@ function findEuropeRegion(
     if (!Array.isArray(regions)) {
         return null;
     }
-
 
     const exact =
         regions.find(region => {
@@ -421,7 +739,6 @@ function findEuropeRegion(
                         .toLowerCase()
                 );
 
-
             return values.some(value =>
                 value === projectLocation ||
                 value === "europe" ||
@@ -430,11 +747,9 @@ function findEuropeRegion(
             );
         });
 
-
     if (exact) {
         return exact;
     }
-
 
     return regions.find(region => {
 
@@ -442,11 +757,39 @@ function findEuropeRegion(
             safeJson(region)
                 .toLowerCase();
 
-
         return (
             text.includes("europe") ||
             text.includes("\"eu\"") ||
             text.includes("app21")
+        );
+    });
+}
+
+
+// --------------------------------------------------
+// SHOW CURRENT STEP
+// --------------------------------------------------
+
+function showStep(message) {
+
+    document
+        .getElementById("result")
+        .textContent =
+        message;
+}
+
+
+// --------------------------------------------------
+// WAIT
+// --------------------------------------------------
+
+function wait(milliseconds) {
+
+    return new Promise(resolve => {
+
+        setTimeout(
+            resolve,
+            milliseconds
         );
     });
 }
@@ -477,7 +820,7 @@ function safeJson(value) {
 
 
 // --------------------------------------------------
-// DISPLAY ERROR
+// SHOW FAILURE
 // --------------------------------------------------
 
 function showFailure(
@@ -493,13 +836,11 @@ function showFailure(
 
         title +
         "\n" +
-        "--------------------\n\n" +
+        "================================\n\n" +
 
         (
-            error &&
-            error.message
-                ? error.message
-                : String(error)
+            error?.message ||
+            String(error)
         );
 }
 
