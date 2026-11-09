@@ -222,7 +222,108 @@ async function runTest() {
         }
 
 
-        const baseUrl =
+        // --------------------------------------------------
+// TEST WELD OBJECT PSET LINK
+// --------------------------------------------------
+
+const weldGuid =
+    "f83962c4-3acc-4606-9a48-f17d3a4a2998";
+
+const weldLink =
+    "frn:entity:" + weldGuid;
+
+const psetsUrl =
+    baseUrl +
+    "psets/" +
+    encodeURIComponent(weldLink);
+
+
+result.textContent =
+    "PROJECT\n" +
+    "--------------------\n" +
+    "ID: " + projectId + "\n" +
+    "Location: " + projectLocation + "\n\n" +
+
+    "PROPERTY SET API\n" +
+    "--------------------\n" +
+    baseUrl + "\n\n" +
+
+    "WELD GUID\n" +
+    "--------------------\n" +
+    weldGuid + "\n\n" +
+
+    "WELD LINK\n" +
+    "--------------------\n" +
+    weldLink + "\n\n" +
+
+    "PSET REQUEST\n" +
+    "--------------------\n" +
+    psetsUrl + "\n\n" +
+
+    "Requesting attached property sets...";
+
+
+const psetsResponse =
+    await fetch(
+        psetsUrl,
+        {
+            method: "GET",
+
+            headers: {
+                "Accept": "application/json",
+                "Authorization": "Bearer " + token
+            }
+        }
+    );
+
+
+const psetsText =
+    await psetsResponse.text();
+
+
+let psetsData;
+
+
+try {
+
+    psetsData =
+        JSON.parse(
+            psetsText
+        );
+
+} catch {
+
+    psetsData =
+        psetsText;
+}
+
+
+result.textContent =
+    "PROJECT\n" +
+    "--------------------\n" +
+    "ID: " + projectId + "\n\n" +
+
+    "WELD GUID\n" +
+    "--------------------\n" +
+    weldGuid + "\n\n" +
+
+    "WELD LINK\n" +
+    "--------------------\n" +
+    weldLink + "\n\n" +
+
+    "PSET REQUEST\n" +
+    "--------------------\n" +
+    psetsUrl + "\n\n" +
+
+    "HTTP STATUS\n" +
+    "--------------------\n" +
+    psetsResponse.status + "\n\n" +
+
+    "RESPONSE\n" +
+    "--------------------\n" +
+    safeJson(
+        psetsData
+    );
             String(psetApi).endsWith("/")
                 ? String(psetApi)
                 : String(psetApi) + "/";
