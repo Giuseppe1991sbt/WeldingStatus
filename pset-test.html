@@ -301,11 +301,11 @@ async function writeSharedStatus() {
         // ------------------------------------------
 
         const writeBody = {
-            props: {
-                [WELD_STATUS_PROPERTY_ID]:
-                    "Part Completed"
-            }
-        };
+    props: {}
+};
+
+writeBody.props[WELD_STATUS_PROPERTY_ID] =
+    "Part Completed";
 
 
         showStep(
