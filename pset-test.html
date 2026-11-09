@@ -9,7 +9,7 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Trimble Property Set Library Test</title>
+    <title>Trimble Property Set Test</title>
 
     <style>
         body {
@@ -50,26 +50,32 @@
 
 <div class="box">
 
-    <h2>Property Set Library Test</h2>
+    <h2>Property Set Test</h2>
 
     <p>
-        Discover the Europe Property Set Service and retrieve
-        the available Property Set libraries.
+        Test the Trimble Property Set Service
+        against the selected weld object.
     </p>
 
     <button id="testButton">
-        FIND PROPERTY SET LIBRARIES
+        FIND WELD PROPERTY SETS
     </button>
 
     <pre id="result">Waiting...</pre>
 
 </div>
 
+
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 
 <script>
 
 let API = null;
+
+
+// --------------------------------------------------
+// START
+// --------------------------------------------------
 
 async function start() {
 
@@ -88,7 +94,7 @@ async function start() {
 
         result.textContent =
             "Connected.\n\n" +
-            "Click FIND PROPERTY SET LIBRARIES.";
+            "Click FIND WELD PROPERTY SETS.";
 
     } catch (error) {
 
@@ -100,6 +106,10 @@ async function start() {
 }
 
 
+// --------------------------------------------------
+// RUN TEST
+// --------------------------------------------------
+
 async function runTest() {
 
     const result =
@@ -107,17 +117,18 @@ async function runTest() {
 
     try {
 
+        // ------------------------------------------
+        // GET PROJECT
+        // ------------------------------------------
+
         result.textContent =
             "Getting current project...";
-
 
         const project =
             await API.project.getProject();
 
-
         const projectId =
             project.id;
-
 
         const projectLocation =
             String(
@@ -125,16 +136,18 @@ async function runTest() {
             ).toLowerCase();
 
 
+        // ------------------------------------------
+        // GET ACCESS TOKEN
+        // ------------------------------------------
+
         result.textContent =
             "Project received.\n\n" +
             "Requesting access permission...";
-
 
         const token =
             await API.extension.requestPermission(
                 "accesstoken"
             );
-
 
         if (!token) {
 
@@ -144,13 +157,17 @@ async function runTest() {
         }
 
 
+        // ------------------------------------------
+        // DISCOVER REGIONS
+        // ------------------------------------------
+
         result.textContent =
             "Project received.\n" +
             "Access permission received.\n\n" +
             "Discovering regional services...";
 
-
-        const regionsResponse = await fetch(
+        const regionsResponse =
+            await fetch(
                 "https://app.connect.trimble.com/tc/api/2.0/regions",
                 {
                     method: "GET",
@@ -165,7 +182,6 @@ async function runTest() {
                 }
             );
 
-
         if (!regionsResponse.ok) {
 
             throw new Error(
@@ -174,17 +190,19 @@ async function runTest() {
             );
         }
 
-
         const regions =
             await regionsResponse.json();
 
+
+        // ------------------------------------------
+        // FIND EUROPE REGION
+        // ------------------------------------------
 
         const europeRegion =
             findEuropeRegion(
                 regions,
                 projectLocation
             );
-
 
         if (!europeRegion) {
 
@@ -194,12 +212,15 @@ async function runTest() {
         }
 
 
+        // ------------------------------------------
+        // FIND PROPERTY SET API
+        // ------------------------------------------
+
         const psetApi =
             europeRegion["pset-api"] ||
             europeRegion.psetApi ||
             europeRegion.services?.["pset-api"] ||
             europeRegion.services?.psetApi;
-
 
         if (!psetApi) {
 
@@ -222,117 +243,35 @@ async function runTest() {
         }
 
 
-        // --------------------------------------------------
-// TEST WELD OBJECT PSET LINK
-// --------------------------------------------------
+        // ------------------------------------------
+        // BUILD BASE URL
+        // ------------------------------------------
 
-const weldGuid =
-    "f83962c4-3acc-4606-9a48-f17d3a4a2998";
-
-const weldLink =
-    "frn:entity:" + weldGuid;
-
-const psetsUrl =
-    baseUrl +
-    "psets/" +
-    encodeURIComponent(weldLink);
-
-
-result.textContent =
-    "PROJECT\n" +
-    "--------------------\n" +
-    "ID: " + projectId + "\n" +
-    "Location: " + projectLocation + "\n\n" +
-
-    "PROPERTY SET API\n" +
-    "--------------------\n" +
-    baseUrl + "\n\n" +
-
-    "WELD GUID\n" +
-    "--------------------\n" +
-    weldGuid + "\n\n" +
-
-    "WELD LINK\n" +
-    "--------------------\n" +
-    weldLink + "\n\n" +
-
-    "PSET REQUEST\n" +
-    "--------------------\n" +
-    psetsUrl + "\n\n" +
-
-    "Requesting attached property sets...";
-
-
-const psetsResponse =
-    await fetch(
-        psetsUrl,
-        {
-            method: "GET",
-
-            headers: {
-                "Accept": "application/json",
-                "Authorization": "Bearer " + token
-            }
-        }
-    );
-
-
-const psetsText =
-    await psetsResponse.text();
-
-
-let psetsData;
-
-
-try {
-
-    psetsData =
-        JSON.parse(
-            psetsText
-        );
-
-} catch {
-
-    psetsData =
-        psetsText;
-}
-
-
-result.textContent =
-    "PROJECT\n" +
-    "--------------------\n" +
-    "ID: " + projectId + "\n\n" +
-
-    "WELD GUID\n" +
-    "--------------------\n" +
-    weldGuid + "\n\n" +
-
-    "WELD LINK\n" +
-    "--------------------\n" +
-    weldLink + "\n\n" +
-
-    "PSET REQUEST\n" +
-    "--------------------\n" +
-    psetsUrl + "\n\n" +
-
-    "HTTP STATUS\n" +
-    "--------------------\n" +
-    psetsResponse.status + "\n\n" +
-
-    "RESPONSE\n" +
-    "--------------------\n" +
-    safeJson(
-        psetsData
-    );
+        const baseUrl =
             String(psetApi).endsWith("/")
                 ? String(psetApi)
                 : String(psetApi) + "/";
 
 
-        const librariesUrl =
-    baseUrl +
-    "libs/" +
-    encodeURIComponent(projectId);
+        // ------------------------------------------
+        // WELD WE ARE TESTING
+        // ------------------------------------------
+
+        const weldGuid =
+            "f83962c4-3acc-4606-9a48-f17d3a4a2998";
+
+        const weldLink =
+            "frn:entity:" + weldGuid;
+
+
+        // ------------------------------------------
+        // BUILD PSET REQUEST
+        // ------------------------------------------
+
+        const psetsUrl =
+            baseUrl +
+            "psets/" +
+            encodeURIComponent(weldLink);
 
 
         result.textContent =
@@ -341,48 +280,72 @@ result.textContent =
             "ID: " + projectId + "\n" +
             "Location: " + projectLocation + "\n\n" +
 
-            "EUROPE PROPERTY SET API\n" +
+            "PROPERTY SET API\n" +
             "--------------------\n" +
-            baseUrl +
-            "\n\n" +
+            baseUrl + "\n\n" +
 
-            "Loading libraries...";
+            "WELD GUID\n" +
+            "--------------------\n" +
+            weldGuid + "\n\n" +
+
+            "WELD LINK\n" +
+            "--------------------\n" +
+            weldLink + "\n\n" +
+
+            "PSET REQUEST\n" +
+            "--------------------\n" +
+            psetsUrl + "\n\n" +
+
+            "Requesting attached property sets...";
 
 
-        const librariesResponse =
+        // ------------------------------------------
+        // CALL PROPERTY SET API
+        // ------------------------------------------
+
+        const psetsResponse =
             await fetch(
-                librariesUrl,
+                psetsUrl,
                 {
                     method: "GET",
 
                     headers: {
-    "Accept": "application/json",
-    "Authorization": "Bearer " + token
-}
+                        "Accept":
+                            "application/json",
+
+                        "Authorization":
+                            "Bearer " + token
+                    }
                 }
             );
 
 
-        const librariesText =
-            await librariesResponse.text();
+        // ------------------------------------------
+        // READ RESPONSE
+        // ------------------------------------------
 
+        const psetsText =
+            await psetsResponse.text();
 
-        let librariesData;
-
+        let psetsData;
 
         try {
 
-            librariesData =
+            psetsData =
                 JSON.parse(
-                    librariesText
+                    psetsText
                 );
 
         } catch {
 
-            librariesData =
-                librariesText;
+            psetsData =
+                psetsText;
         }
 
+
+        // ------------------------------------------
+        // DISPLAY RESULT
+        // ------------------------------------------
 
         result.textContent =
             "PROJECT\n" +
@@ -390,37 +353,46 @@ result.textContent =
             "ID: " + projectId + "\n" +
             "Location: " + projectLocation + "\n\n" +
 
-            "EUROPE PROPERTY SET API\n" +
+            "PROPERTY SET API\n" +
             "--------------------\n" +
-            baseUrl +
-            "\n\n" +
+            baseUrl + "\n\n" +
 
-            "LIBRARY REQUEST\n" +
+            "WELD GUID\n" +
             "--------------------\n" +
-            librariesUrl +
-            "\n\n" +
+            weldGuid + "\n\n" +
+
+            "WELD LINK\n" +
+            "--------------------\n" +
+            weldLink + "\n\n" +
+
+            "PSET REQUEST\n" +
+            "--------------------\n" +
+            psetsUrl + "\n\n" +
 
             "HTTP STATUS\n" +
             "--------------------\n" +
-            librariesResponse.status +
-            "\n\n" +
+            psetsResponse.status + "\n\n" +
 
             "RESPONSE\n" +
             "--------------------\n" +
             safeJson(
-                librariesData
+                psetsData
             );
 
 
     } catch (error) {
 
         showFailure(
-            "Property Set library test failed",
+            "Property Set test failed",
             error
         );
     }
 }
 
+
+// --------------------------------------------------
+// FIND EUROPE REGION
+// --------------------------------------------------
 
 function findEuropeRegion(
     regions,
@@ -480,6 +452,10 @@ function findEuropeRegion(
 }
 
 
+// --------------------------------------------------
+// SAFE JSON
+// --------------------------------------------------
+
 function safeJson(value) {
 
     try {
@@ -500,13 +476,16 @@ function safeJson(value) {
 }
 
 
+// --------------------------------------------------
+// DISPLAY ERROR
+// --------------------------------------------------
+
 function showFailure(
     title,
     error
 ) {
 
     console.error(error);
-
 
     document
         .getElementById("result")
@@ -525,6 +504,10 @@ function showFailure(
 }
 
 
+// --------------------------------------------------
+// BUTTON
+// --------------------------------------------------
+
 document
     .getElementById("testButton")
     .addEventListener(
@@ -532,6 +515,10 @@ document
         runTest
     );
 
+
+// --------------------------------------------------
+// GO
+// --------------------------------------------------
 
 window.addEventListener(
     "load",
