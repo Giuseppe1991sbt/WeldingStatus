@@ -9,10 +9,10 @@ let psetBaseUrl = null;
 // --------------------------------------------------
 
 const LIBRARY_ID =
-    "7r7dk7c43t1shjqgmj5urdjbyrtsssh0";
+    "7r7dk7c43tlshjqgmj5urdjbyrtsssh0";
 
 const DEFINITION_ID =
-    "uvq7wy0xgyb2o2sxornh5juwyngsn76w";
+    "uvq7wy0xgvb2o2sxornh5juywnqsn76w";
 
 const WELD_STATUS_PROPERTY_ID =
     "prop_k57dohz4v8wj0sploxwvjt8jhn7jn605";
