@@ -72,6 +72,7 @@
 
 </div>
 
+
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 
 <script>
@@ -83,23 +84,18 @@ let API = null;
 // REAL TRIMBLE RESOURCE IDENTIFIERS
 // --------------------------------------------------
 
-// Weld Status Tracking library
 const LIBRARY_ID =
     "7r7dk7c43t1shjqgmj5urdjbyrtsssh0";
 
-// Weld Progress definition
 const DEFINITION_ID =
     "uvq7wy0xgyb2o2sxornh5juwyngsn76w";
 
-// Internal ID for the Weld Status dropdown
 const WELD_STATUS_PROPERTY_ID =
     "prop_k57dohz4v8wj0sploxwvjt8jhn7jn605";
 
-// MS GUID shown for the selected test weld
 const WELD_GUID =
     "f83962c4-3acc-4606-9a48-f17d3a4a2998";
 
-// Link for the shared Property Set instance
 const WELD_LINK =
     "frn:entity:" + WELD_GUID;
 
@@ -132,21 +128,20 @@ async function start() {
         result.textContent =
             "CONNECTED\n" +
             "================================\n\n" +
-
             "Project:\n" +
             (
-                project?.name ||
-                project?.id ||
-                "Not returned"
+                project &&
+                (project.name || project.id)
+                    ? (project.name || project.id)
+                    : "Not returned"
             ) +
-
-            "\n\nTest weld GUID:\n" +
+            "\n\n" +
+            "Test weld GUID:\n" +
             WELD_GUID +
+            "\n\n" +
+            "Ready to perform the shared write.";
 
-            "\n\nReady to perform the shared write.";
-
-        button.disabled =
-            false;
+        button.disabled = false;
 
     } catch (error) {
 
@@ -167,13 +162,12 @@ async function writeSharedStatus() {
     const button =
         document.getElementById("writeButton");
 
-    button.disabled =
-        true;
+    button.disabled = true;
 
     try {
 
         // ------------------------------------------
-        // GET CURRENT PROJECT
+        // PROJECT
         // ------------------------------------------
 
         showStep(
@@ -185,12 +179,14 @@ async function writeSharedStatus() {
 
         const projectLocation =
             String(
-                project?.location || ""
+                project && project.location
+                    ? project.location
+                    : ""
             ).toLowerCase();
 
 
         // ------------------------------------------
-        // GET ACCESS TOKEN
+        // ACCESS TOKEN
         // ------------------------------------------
 
         showStep(
@@ -211,7 +207,7 @@ async function writeSharedStatus() {
 
 
         // ------------------------------------------
-        // GET REGIONAL SERVICES
+        // REGIONS
         // ------------------------------------------
 
         showStep(
@@ -225,11 +221,8 @@ async function writeSharedStatus() {
                     method: "GET",
 
                     headers: {
-                        "Accept":
-                            "application/json",
-
-                        "Authorization":
-                            "Bearer " + token
+                        "Accept": "application/json",
+                        "Authorization": "Bearer " + token
                     }
                 }
             );
@@ -244,6 +237,11 @@ async function writeSharedStatus() {
 
         const regions =
             await regionsResponse.json();
+
+
+        // ------------------------------------------
+        // EUROPE REGION
+        // ------------------------------------------
 
         const europeRegion =
             findEuropeRegion(
@@ -260,14 +258,22 @@ async function writeSharedStatus() {
 
 
         // ------------------------------------------
-        // GET PROPERTY SET API URL
+        // PROPERTY SET API
         // ------------------------------------------
 
         const psetApi =
             europeRegion["pset-api"] ||
             europeRegion.psetApi ||
-            europeRegion.services?.["pset-api"] ||
-            europeRegion.services?.psetApi;
+            (
+                europeRegion.services
+                    ? europeRegion.services["pset-api"]
+                    : null
+            ) ||
+            (
+                europeRegion.services
+                    ? europeRegion.services.psetApi
+                    : null
+            );
 
         if (!psetApi) {
 
@@ -275,6 +281,7 @@ async function writeSharedStatus() {
                 "The Europe region did not return a Property Set API URL."
             );
         }
+
 
         const baseUrl =
             String(psetApi).endsWith("/")
@@ -297,16 +304,20 @@ async function writeSharedStatus() {
 
 
         // ------------------------------------------
-        // CORRECT WRITE PAYLOAD
+        // WRITE PAYLOAD
         // ------------------------------------------
 
         const writeBody = {
-    props: {}
-};
+            props: {}
+        };
 
-writeBody.props[WELD_STATUS_PROPERTY_ID] =
-    "Part Completed";
+        writeBody.props[WELD_STATUS_PROPERTY_ID] =
+            "Part Completed";
 
+
+        // ------------------------------------------
+        // SHOW EXACT REQUEST
+        // ------------------------------------------
 
         showStep(
             "WRITING TO TRIMBLE CLOUD\n" +
@@ -320,7 +331,10 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
             "Part Completed\n\n" +
 
             "Endpoint:\n" +
-           ayload:\n" +
+            psetUrl +
+            "\n\n" +
+
+            "Payload:\n" +
             safeJson(writeBody) +
             "\n\n" +
 
@@ -329,7 +343,7 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
 
 
         // ------------------------------------------
-        // PATCH THE SHARED PROPERTY SET
+        // PATCH
         // ------------------------------------------
 
         const writeResponse =
@@ -339,14 +353,9 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
                     method: "PATCH",
 
                     headers: {
-                        "Accept":
-                            "application/json",
-
-                        "Content-Type":
-                            "application/json",
-
-                        "Authorization":
-                            "Bearer " + token
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token
                     },
 
                     body:
@@ -356,10 +365,12 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
                 }
             );
 
+
         const writeData =
             await readResponseData(
                 writeResponse
             );
+
 
         if (!writeResponse.ok) {
 
@@ -373,24 +384,22 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
 
 
         // ------------------------------------------
-        // WAIT BRIEFLY BEFORE READ-BACK
+        // WAIT FOR CLOUD READ-BACK
         // ------------------------------------------
 
         showStep(
             "PATCH accepted with HTTP " +
             writeResponse.status +
             ".\n\n" +
-
             "Waiting for Trimble cloud read-back..."
         );
 
-        await wait(
-            1500
-        );
+
+        await wait(1500);
 
 
         // ------------------------------------------
-        // READ THE SAME PROPERTY SET BACK
+        // GET SAME PROPERTY SET BACK
         // ------------------------------------------
 
         const readResponse =
@@ -400,19 +409,18 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
                     method: "GET",
 
                     headers: {
-                        "Accept":
-                            "application/json",
-
-                        "Authorization":
-                            "Bearer " + token
+                        "Accept": "application/json",
+                        "Authorization": "Bearer " + token
                     }
                 }
             );
+
 
         const readData =
             await readResponseData(
                 readResponse
             );
+
 
         if (!readResponse.ok) {
 
@@ -435,9 +443,10 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
 
             "Project:\n" +
             (
-                project?.name ||
-                project?.id ||
-                "Not returned"
+                project &&
+                (project.name || project.id)
+                    ? (project.name || project.id)
+                    : "Not returned"
             ) +
             "\n\n" +
 
@@ -471,6 +480,7 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
             safeJson(readData)
         );
 
+
     } catch (error) {
 
         showFailure(
@@ -480,14 +490,13 @@ writeBody.props[WELD_STATUS_PROPERTY_ID] =
 
     } finally {
 
-        button.disabled =
-            false;
+        button.disabled = false;
     }
 }
 
 
 // --------------------------------------------------
-// READ API RESPONSE SAFELY
+// READ RESPONSE
 // --------------------------------------------------
 
 async function readResponseData(response) {
@@ -503,7 +512,7 @@ async function readResponseData(response) {
 
         return JSON.parse(text);
 
-    } catch {
+    } catch (error) {
 
         return text;
     }
@@ -511,7 +520,7 @@ async function readResponseData(response) {
 
 
 // --------------------------------------------------
-// CREATE READABLE API ERROR
+// API ERROR
 // --------------------------------------------------
 
 async function createApiError(
@@ -547,8 +556,9 @@ function findEuropeRegion(
         return null;
     }
 
+
     const exact =
-        regions.find(region => {
+        regions.find(function(region) {
 
             const values =
                 [
@@ -559,35 +569,46 @@ function findEuropeRegion(
                     region.awsRegion
                 ]
                 .filter(Boolean)
-                .map(value =>
-                    String(value)
-                        .toLowerCase()
-                );
+                .map(function(value) {
 
-            return values.some(value =>
-                value === projectLocation ||
-                value === "europe" ||
-                value === "eu" ||
-                value.includes("europe")
+                    return String(value)
+                        .toLowerCase();
+                });
+
+
+            return values.some(
+                function(value) {
+
+                    return (
+                        value === projectLocation ||
+                        value === "europe" ||
+                        value === "eu" ||
+                        value.includes("europe")
+                    );
+                }
             );
         });
+
 
     if (exact) {
         return exact;
     }
 
-    return regions.find(region => {
 
-        const text =
-            safeJson(region)
-                .toLowerCase();
+    return regions.find(
+        function(region) {
 
-        return (
-            text.includes("europe") ||
-            text.includes("\"eu\"") ||
-            text.includes("app21")
-        );
-    });
+            const text =
+                safeJson(region)
+                    .toLowerCase();
+
+            return (
+                text.includes("europe") ||
+                text.includes("\"eu\"") ||
+                text.includes("app21")
+            );
+        }
+    );
 }
 
 
@@ -597,18 +618,20 @@ function findEuropeRegion(
 
 function wait(milliseconds) {
 
-    return new Promise(resolve => {
+    return new Promise(
+        function(resolve) {
 
-        setTimeout(
-            resolve,
-            milliseconds
-        );
-    });
+            setTimeout(
+                resolve,
+                milliseconds
+            );
+        }
+    );
 }
 
 
 // --------------------------------------------------
-// DISPLAY CURRENT STEP
+// DISPLAY
 // --------------------------------------------------
 
 function showStep(message) {
@@ -630,14 +653,22 @@ function safeJson(value) {
 
         return JSON.stringify(
             value,
-            (key, item) =>
-                typeof item === "bigint"
-                    ? item.toString()
-                    : item,
+
+            function(key, item) {
+
+                if (
+                    typeof item === "bigint"
+                ) {
+                    return item.toString();
+                }
+
+                return item;
+            },
+
             2
         );
 
-    } catch {
+    } catch (error) {
 
         return String(value);
     }
@@ -645,7 +676,7 @@ function safeJson(value) {
 
 
 // --------------------------------------------------
-// DISPLAY ERROR
+// ERROR DISPLAY
 // --------------------------------------------------
 
 function showFailure(
@@ -664,8 +695,10 @@ function showFailure(
         "================================\n\n" +
 
         (
-            error?.message ||
-            String(error)
+            error &&
+            error.message
+                ? error.message
+                : String(error)
         );
 }
 
@@ -683,12 +716,13 @@ document
 
 
 // --------------------------------------------------
-// REPORT UNEXPECTED JAVASCRIPT ERRORS
+// GLOBAL JS ERROR
 // --------------------------------------------------
 
 window.addEventListener(
     "error",
-    event => {
+
+    function(event) {
 
         showFailure(
             "JavaScript error",
