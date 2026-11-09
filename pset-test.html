@@ -316,10 +316,11 @@ async function writeSharedStatus() {
         // ------------------------------------------
 
         const writeBody = {
-            props: {
-                "Part Completed"
-            }
-        };
+    props: {
+        [WELD_STATUS_PROPERTY_ID]:
+            "Part Completed"
+    }
+};
 
         const writeResponse =
             await fetch(
