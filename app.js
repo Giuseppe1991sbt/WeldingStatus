@@ -1,5 +1,26 @@
 let API = null;
 let currentWeld = null;
+let trimbleAccessToken = null;
+let psetBaseUrl = null;
+
+
+// --------------------------------------------------
+// REAL TRIMBLE PROPERTY SET IDENTIFIERS
+// --------------------------------------------------
+
+const LIBRARY_ID =
+    "7r7dk7c43tlshjqgmj5urdjbyrtsssh0";
+
+const DEFINITION_ID =
+    "uvq7wy0xgyb2o2sxornh5juwynqsn76w";
+
+const WELD_STATUS_PROPERTY_ID =
+    "prop_k57dohz4v8wj0sploxwvjt8jhn7jn605";
+
+
+// --------------------------------------------------
+// STATUS COLOURS
+// --------------------------------------------------
 
 const statuses = {
     "Not Started": "#808080",
@@ -18,23 +39,23 @@ const statuses = {
 
 async function start() {
 
-    const box = document.getElementById("status");
+    const box =
+        document.getElementById("status");
 
     try {
 
         box.innerHTML =
             "Connecting to Trimble Connect...";
 
-        API = await TrimbleConnectWorkspace.connect(
-            window.parent,
-            onEvent
-        );
+        API =
+            await TrimbleConnectWorkspace.connect(
+                window.parent,
+                onEvent
+            );
 
-        box.innerHTML =
-            "Connected. Requesting Trimble permission...";
 
         // ------------------------------------------
-        // GET CURRENT PROJECT
+        // GET PROJECT
         // ------------------------------------------
 
         const project =
@@ -45,90 +66,63 @@ async function start() {
             project
         );
 
+
         // ------------------------------------------
-        // REQUEST TRIMBLE ACCESS TOKEN
+        // GET ACCESS TOKEN
         // ------------------------------------------
 
-        const token =
+        box.innerHTML =
+            "Requesting Trimble access permission...";
+
+        trimbleAccessToken =
             await API.extension.requestPermission(
                 "accesstoken"
             );
 
-        console.log(
-            "ACCESS TOKEN RECEIVED:",
-            Boolean(token)
-        );
-
-        console.log(
-            "ACCESS TOKEN TYPE:",
-            typeof token
-        );
-
-        console.log(
-            "ACCESS TOKEN LENGTH:",
-            typeof token === "string"
-                ? token.length
-                : "Not a string"
-        );
-
-        if (!token) {
+        if (!trimbleAccessToken) {
 
             throw new Error(
                 "Trimble Connect did not return an access token."
             );
         }
 
-        window.trimbleAccessToken =
-            token;
 
         // ------------------------------------------
-        // CONNECTION TEST SUCCESSFUL
+        // DISCOVER REGIONAL PSET SERVICE
         // ------------------------------------------
 
-        box.innerHTML = `
+        box.innerHTML =
+            "Finding the Trimble Property Set service...";
 
-            <strong style="color:#006b3c;">
-                Trimble connection successful
-            </strong>
+        psetBaseUrl =
+            await discoverPsetBaseUrl(
+                project,
+                trimbleAccessToken
+            );
 
-            <br><br>
+        console.log(
+            "PROPERTY SET BASE URL:",
+            psetBaseUrl
+        );
 
-            <strong>Project name:</strong>
-            <br>
-            ${escapeHtml(
-                project?.name ||
-                "Not returned"
-            )}
 
-            <br><br>
+        // ------------------------------------------
+        // READY
+        // ------------------------------------------
 
-            <strong>Project ID:</strong>
-            <br>
-            ${escapeHtml(
-                project?.id ||
-                project?.projectId ||
-                "Not returned"
-            )}
-
-            <br><br>
-
-            <strong>Access token:</strong>
-            <br>
-            ${
-                token
-                    ? "RECEIVED"
-                    : "NOT RECEIVED"
-            }
-
-            <br><br>
-
-            Select one weld in the 3D model.
-        `;
+        box.innerHTML =
+            "<strong style=\"color:#006b3c;\">" +
+            "Connected to Trimble Connect" +
+            "</strong>" +
+            "<br><br>" +
+            "Shared Property Set service connected." +
+            "<br><br>" +
+            "Select one weld in the 3D model.";
 
     } catch (error) {
 
         console.error(
-            "START-UP TEST FAILED:",
+            "START-UP FAILED:",
             error
         );
 
@@ -138,10 +132,165 @@ async function start() {
 
 
 // --------------------------------------------------
+// DISCOVER PROPERTY SET SERVICE
+// --------------------------------------------------
+
+async function discoverPsetBaseUrl(
+    project,
+    token
+) {
+
+    const response =
+        await fetch(
+            "https://app.connect.trimble.com/tc/api/2.0/regions",
+            {
+                method: "GET",
+
+                headers: {
+                    "Accept":
+                        "application/json",
+
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+    if (!response.ok) {
+
+        throw new Error(
+            "Regions API returned HTTP " +
+            response.status
+        );
+    }
+
+    const regions =
+        await response.json();
+
+    const projectLocation =
+        String(
+            project && project.location
+                ? project.location
+                : ""
+        ).toLowerCase();
+
+    const region =
+        findEuropeRegion(
+            regions,
+            projectLocation
+        );
+
+    if (!region) {
+
+        throw new Error(
+            "Could not identify the Trimble Europe region."
+        );
+    }
+
+    const psetApi =
+        region["pset-api"] ||
+        region.psetApi ||
+        (
+            region.services
+                ? region.services["pset-api"]
+                : null
+        ) ||
+        (
+            region.services
+                ? region.services.psetApi
+                : null
+        );
+
+    if (!psetApi) {
+
+        throw new Error(
+            "The Trimble Europe region did not return a Property Set API URL."
+        );
+    }
+
+    return String(psetApi).endsWith("/")
+        ? String(psetApi)
+        : String(psetApi) + "/";
+}
+
+
+// --------------------------------------------------
+// FIND EUROPE REGION
+// --------------------------------------------------
+
+function findEuropeRegion(
+    regions,
+    projectLocation
+) {
+
+    if (!Array.isArray(regions)) {
+        return null;
+    }
+
+    const exact =
+        regions.find(
+            function(region) {
+
+                const values =
+                    [
+                        region.location,
+                        region.name,
+                        region.trmRegion,
+                        region.region,
+                        region.awsRegion
+                    ]
+                    .filter(Boolean)
+                    .map(
+                        function(value) {
+
+                            return String(value)
+                                .toLowerCase();
+                        }
+                    );
+
+                return values.some(
+                    function(value) {
+
+                        return (
+                            value === projectLocation ||
+                            value === "europe" ||
+                            value === "eu" ||
+                            value.includes("europe")
+                        );
+                    }
+                );
+            }
+        );
+
+    if (exact) {
+        return exact;
+    }
+
+    return regions.find(
+        function(region) {
+
+            const text =
+                safeJson(region)
+                    .toLowerCase();
+
+            return (
+                text.includes("europe") ||
+                text.includes("\"eu\"") ||
+                text.includes("app21")
+            );
+        }
+    );
+}
+
+
+// --------------------------------------------------
 // TRIMBLE EVENTS
 // --------------------------------------------------
 
-async function onEvent(event, data) {
+async function onEvent(
+    event,
+    data
+) {
 
     console.log(
         "Trimble event:",
@@ -170,7 +319,6 @@ async function readWeld() {
         const selection =
             await API.viewer.getSelection();
 
-
         if (
             !selection ||
             selection.length === 0
@@ -178,25 +326,24 @@ async function readWeld() {
 
             currentWeld = null;
 
-            document.getElementById("status")
+            document
+                .getElementById("status")
                 .innerHTML =
                 "Select one weld in the model.";
 
             return;
         }
 
-
         const selected =
             selection[0];
-
 
         if (
             !selected.objectRuntimeIds ||
             selected.objectRuntimeIds.length === 0
         ) {
+
             return;
         }
-
 
         const modelId =
             selected.modelId;
@@ -205,22 +352,20 @@ async function readWeld() {
             selected.objectRuntimeIds[0];
 
 
+        // ------------------------------------------
+        // READ NORMAL MODEL PROPERTIES
+        // ------------------------------------------
+
         const result =
             await API.viewer.getObjectProperties(
                 modelId,
                 [runtimeId]
             );
 
-
         console.log(
             "RAW TRIMBLE PROPERTIES:",
             result
         );
-
-
-        // ------------------------------------------
-        // GET NORMAL MODEL PROPERTIES
-        // ------------------------------------------
 
         const flat = {};
 
@@ -231,86 +376,69 @@ async function readWeld() {
 
 
         // ------------------------------------------
-        // FIND WELD PROGRESS PROPERTY SET
+        // GET IFC OBJECT ID
         // ------------------------------------------
 
-        const weldProgress =
-            findPropertySet(
-                result,
-                "Weld Progress"
+        const convertedIds =
+            await API.viewer.convertToObjectIds(
+                modelId,
+                [runtimeId]
             );
 
+        const externalId =
+            extractObjectId(
+                convertedIds
+            );
+
+        if (!externalId) {
+
+            throw new Error(
+                "Trimble did not return an IFC/Object ID for the selected weld."
+            );
+        }
+
+        const psetLink =
+            "frn:entity:" + externalId;
 
         console.log(
-            "WELD PROGRESS FOUND:",
-            weldProgress
+            "WELD OBJECT ID:",
+            externalId
+        );
+
+        console.log(
+            "WELD PSET LINK:",
+            psetLink
         );
 
 
-        let sharedStatus = "";
-        let sharedComment = "";
+        // ------------------------------------------
+        // READ SHARED PSET FROM TRIMBLE CLOUD
+        // ------------------------------------------
 
+        const sharedPset =
+            await getSharedPset(
+                psetLink
+            );
 
-        if (weldProgress) {
-
-            sharedStatus =
-                readPropertyFromSet(
-                    weldProgress,
-                    "Weld Status"
-                );
-
-
-            sharedComment =
-                readPropertyFromSet(
-                    weldProgress,
-                    "Status Comment"
-                );
-        }
-
+        const sharedStatus =
+            getPsetProperty(
+                sharedPset,
+                WELD_STATUS_PROPERTY_ID
+            );
 
         console.log(
-            "SHARED STATUS:",
+            "SHARED PSET:",
+            sharedPset
+        );
+
+        console.log(
+            "SHARED WELD STATUS:",
             sharedStatus
         );
 
 
         // ------------------------------------------
-        // GET GUID
-        // ------------------------------------------
-
-        let externalId =
-            modelId + "-" + runtimeId;
-
-
-        try {
-
-            const ids =
-                await API.viewer.convertToObjectIds(
-                    modelId,
-                    [runtimeId]
-                );
-
-
-            if (
-                ids &&
-                ids.length > 0
-            ) {
-
-                externalId =
-                    String(ids[0]);
-            }
-
-        } catch (error) {
-
-            console.warn(
-                "Could not get GUID:",
-                error
-            );
-        }
-
-
-        // ------------------------------------------
-        // BUILD CURRENT WELD OBJECT
+        // BUILD CURRENT WELD
         // ------------------------------------------
 
         currentWeld = {
@@ -324,81 +452,89 @@ async function readWeld() {
             externalId:
                 externalId,
 
+            psetLink:
+                psetLink,
 
-            weldId: getProp(
-                flat,
-                [
-                    "weld id",
-                    "weld number"
-                ]
-            ),
+            psetVersion:
+                getPsetVersion(
+                    sharedPset
+                ),
 
+            schemaVersion:
+                getSchemaVersion(
+                    sharedPset
+                ),
 
-            type: getProp(
-                flat,
-                [
-                    "weld type"
-                ]
-            ),
+            weldId:
+                getProp(
+                    flat,
+                    [
+                        "weld id",
+                        "weld number"
+                    ]
+                ),
 
+            type:
+                getProp(
+                    flat,
+                    [
+                        "weld type"
+                    ]
+                ),
 
-            purpose: getProp(
-                flat,
-                [
-                    "weld purpose"
-                ]
-            ),
+            purpose:
+                getProp(
+                    flat,
+                    [
+                        "weld purpose"
+                    ]
+                ),
 
+            length:
+                getProp(
+                    flat,
+                    [
+                        "weld length (mm)",
+                        "weld length"
+                    ]
+                ),
 
-            length: getProp(
-                flat,
-                [
-                    "weld length (mm)",
-                    "weld length"
-                ]
-            ),
+            throat:
+                getProp(
+                    flat,
+                    [
+                        "weld throat (mm)",
+                        "weld throat"
+                    ]
+                ),
 
+            cage:
+                getProp(
+                    flat,
+                    [
+                        "weld cage id",
+                        "embed cage id"
+                    ]
+                ),
 
-            throat: getProp(
-                flat,
-                [
-                    "weld throat (mm)",
-                    "weld throat"
-                ]
-            ),
+            detail:
+                getProp(
+                    flat,
+                    [
+                        "detail"
+                    ]
+                ),
 
-
-            cage: getProp(
-                flat,
-                [
-                    "weld cage id",
-                    "embed cage id"
-                ]
-            ),
-
-
-            detail: getProp(
-                flat,
-                [
-                    "detail"
-                ]
-            ),
-
-
-            father: getProp(
-                flat,
-                [
-                    "father id"
-                ]
-            ),
-
+            father:
+                getProp(
+                    flat,
+                    [
+                        "father id"
+                    ]
+                ),
 
             sharedStatus:
-                sharedStatus,
-
-
-            sharedComment:
-                sharedComment
+                sharedStatus
         };
 
 
@@ -412,132 +548,207 @@ async function readWeld() {
 
 
 // --------------------------------------------------
-// FIND A SPECIFIC PROPERTY SET
+// EXTRACT IFC / OBJECT ID
 // --------------------------------------------------
 
-function findPropertySet(
-    input,
-    wantedName
-) {
+function extractObjectId(ids) {
 
     if (
-        input === null ||
-        input === undefined
-    ) {
-        return null;
-    }
-
-
-    if (Array.isArray(input)) {
-
-        for (const item of input) {
-
-            const found =
-                findPropertySet(
-                    item,
-                    wantedName
-                );
-
-            if (found) {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
-
-    if (
-        typeof input !== "object"
-    ) {
-        return null;
-    }
-
-
-    if (
-        typeof input.name === "string" &&
-        input.name
-            .trim()
-            .toLowerCase() ===
-        wantedName
-            .trim()
-            .toLowerCase() &&
-        Array.isArray(input.properties)
-    ) {
-
-        return input;
-    }
-
-
-    for (
-        const value
-        of Object.values(input)
-    ) {
-
-        const found =
-            findPropertySet(
-                value,
-                wantedName
-            );
-
-        if (found) {
-            return found;
-        }
-    }
-
-
-    return null;
-}
-
-
-// --------------------------------------------------
-// READ PROPERTY FROM PROPERTY SET
-// --------------------------------------------------
-
-function readPropertyFromSet(
-    propertySet,
-    wantedName
-) {
-
-    if (
-        !propertySet ||
-        !Array.isArray(
-            propertySet.properties
-        )
+        !ids ||
+        !Array.isArray(ids) ||
+        ids.length === 0
     ) {
 
         return "";
     }
 
+    const first =
+        ids[0];
 
-    const wanted =
-        wantedName
-            .trim()
-            .toLowerCase();
-
-
-    for (
-        const property
-        of propertySet.properties
+    if (
+        first === null ||
+        first === undefined
     ) {
 
-        if (
-            property &&
-            typeof property.name === "string" &&
-            property.name
-                .trim()
-                .toLowerCase() ===
-            wanted
-        ) {
-
-            return safeValue(
-                property.value
-            );
-        }
+        return "";
     }
 
+    if (
+        typeof first === "string" ||
+        typeof first === "number"
+    ) {
+
+        return String(first);
+    }
+
+    if (typeof first === "object") {
+
+        return String(
+            first.id ||
+            first.objectId ||
+            first.externalId ||
+            first.guid ||
+            first.value ||
+            ""
+        );
+    }
 
     return "";
+}
+
+
+// --------------------------------------------------
+// BUILD REAL PSET URL
+// --------------------------------------------------
+
+function getPsetUrl(psetLink) {
+
+    if (!psetBaseUrl) {
+
+        throw new Error(
+            "The Trimble Property Set service is not connected."
+        );
+    }
+
+    return (
+        psetBaseUrl +
+        "psets/" +
+        encodeURIComponent(psetLink) +
+        "/" +
+        encodeURIComponent(LIBRARY_ID) +
+        "/" +
+        encodeURIComponent(DEFINITION_ID)
+    );
+}
+
+
+// --------------------------------------------------
+// READ SHARED PSET
+// --------------------------------------------------
+
+async function getSharedPset(psetLink) {
+
+    const url =
+        getPsetUrl(
+            psetLink
+        );
+
+    const response =
+        await fetch(
+            url,
+            {
+                method: "GET",
+
+                headers: {
+                    "Accept":
+                        "application/json",
+
+                    "Authorization":
+                        "Bearer " +
+                        trimbleAccessToken
+                }
+            }
+        );
+
+    const data =
+        await readResponseData(
+            response
+        );
+
+    if (response.status === 404) {
+
+        console.warn(
+            "No shared PSet instance exists for:",
+            psetLink
+        );
+
+        return null;
+    }
+
+    if (!response.ok) {
+
+        throw new Error(
+            "Could not read the shared Weld Progress PSet." +
+            "\nHTTP " +
+            response.status +
+            "\n\n" +
+            safeJson(data)
+        );
+    }
+
+    return data;
+}
+
+
+// --------------------------------------------------
+// READ PSET PROPERTY
+// --------------------------------------------------
+
+function getPsetProperty(
+    pset,
+    propertyId
+) {
+
+    if (
+        !pset ||
+        !pset.props
+    ) {
+
+        return "";
+    }
+
+    const value =
+        pset.props[propertyId];
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+
+        return "";
+    }
+
+    return String(value);
+}
+
+
+// --------------------------------------------------
+// READ PSET VERSION
+// --------------------------------------------------
+
+function getPsetVersion(pset) {
+
+    if (
+        pset &&
+        Number.isFinite(
+            Number(pset.v)
+        )
+    ) {
+
+        return Number(pset.v);
+    }
+
+    return 0;
+}
+
+
+// --------------------------------------------------
+// READ SCHEMA VERSION
+// --------------------------------------------------
+
+function getSchemaVersion(pset) {
+
+    if (
+        pset &&
+        Number.isFinite(
+            Number(pset.schemaV)
+        )
+    ) {
+
+        return Number(pset.schemaV);
+    }
+
+    return 0;
 }
 
 
@@ -554,30 +765,31 @@ function flatten(
         input === null ||
         input === undefined
     ) {
+
         return;
     }
-
 
     if (Array.isArray(input)) {
 
         input.forEach(
-            item =>
+            function(item) {
+
                 flatten(
                     item,
                     output
-                )
+                );
+            }
         );
 
         return;
     }
 
-
     if (
         typeof input !== "object"
     ) {
+
         return;
     }
-
 
     if (
         input.name !== undefined &&
@@ -594,10 +806,15 @@ function flatten(
             );
     }
 
-
     Object.entries(input)
         .forEach(
-            ([key, value]) => {
+            function(entry) {
+
+                const key =
+                    entry[0];
+
+                const value =
+                    entry[1];
 
                 if (
                     value !== null &&
@@ -612,7 +829,6 @@ function flatten(
                     ] =
                         safeValue(value);
                 }
-
 
                 flatten(
                     value,
@@ -633,16 +849,16 @@ function safeValue(value) {
         value === null ||
         value === undefined
     ) {
+
         return "";
     }
-
 
     if (
         typeof value === "bigint"
     ) {
+
         return value.toString();
     }
-
 
     return String(value);
 }
@@ -670,11 +886,16 @@ function getProp(
         }
     }
 
-
     for (
-        const [key, value]
+        const entry
         of Object.entries(flat)
     ) {
+
+        const key =
+            entry[0];
+
+        const value =
+            entry[1];
 
         for (
             const name of names
@@ -689,7 +910,6 @@ function getProp(
             }
         }
     }
-
 
     return "";
 }
@@ -706,15 +926,14 @@ async function applyColour(status) {
         !currentWeld ||
         !statuses[status]
     ) {
+
         return;
     }
-
 
     const selector = {
 
         modelObjectIds: [
             {
-
                 modelId:
                     currentWeld.modelId,
 
@@ -725,11 +944,8 @@ async function applyColour(status) {
         ]
     };
 
-
     await API.viewer.setObjectState(
-
         selector,
-
         {
             color:
                 statuses[status],
@@ -747,19 +963,6 @@ async function applyColour(status) {
 
 function renderPanel() {
 
-    const localKey =
-        "weld-status-" +
-        currentWeld.externalId;
-
-
-    const localRecord =
-        JSON.parse(
-            localStorage.getItem(
-                localKey
-            ) || "null"
-        );
-
-
     const sharedValid =
         Object.prototype
             .hasOwnProperty
@@ -768,294 +971,228 @@ function renderPanel() {
                 currentWeld.sharedStatus
             );
 
-
     const currentStatus =
         sharedValid
             ? currentWeld.sharedStatus
-            : localRecord?.status ||
-              "Not Started";
-
-
-    const currentComment =
-        currentWeld.sharedComment ||
-        localRecord?.comment ||
-        "";
-
+            : "Not Started";
 
     const source =
         sharedValid
-            ? "Shared Trimble property"
-            : "Local browser prototype";
-
+            ? "Shared Trimble Property Set"
+            : "No shared status found";
 
     const colour =
         statuses[currentStatus];
 
-
     applyColour(
         currentStatus
     ).catch(
-        error =>
+        function(error) {
+
             console.error(
                 "Colour error:",
                 error
-            )
+            );
+        }
     );
-
 
     const options =
         Object.keys(statuses)
             .map(
-                status => {
+                function(status) {
 
                     const selected =
                         status === currentStatus
                             ? "selected"
                             : "";
 
-                    return `
-                        <option
-                            value="${escapeHtml(status)}"
-                            ${selected}
-                        >
-                            ${escapeHtml(status)}
-                        </option>
-                    `;
+                    return (
+                        "<option " +
+                        "value=\"" +
+                        escapeHtml(status) +
+                        "\" " +
+                        selected +
+                        ">" +
+                        escapeHtml(status) +
+                        "</option>"
+                    );
                 }
             )
             .join("");
 
-
-    document.getElementById("status")
-        .innerHTML = `
-
-        <div style="
-            border-left:8px solid ${colour};
-            padding-left:12px;
-        ">
-
-            <small>
-                WELD ID
-            </small>
-
-            <div style="
-                font-size:24px;
-                font-weight:bold;
-                margin-bottom:16px;
-            ">
-                ${escapeHtml(
-                    currentWeld.weldId
-                )}
-            </div>
-
-
-            ${field(
-                "Type",
-                currentWeld.type
-            )}
-
-            ${field(
-                "Purpose",
-                currentWeld.purpose
-            )}
-
-            ${field(
-                "Length",
-                withMM(
-                    currentWeld.length
-                )
-            )}
-
-            ${field(
-                "Throat",
-                withMM(
-                    currentWeld.throat
-                )
-            )}
-
-            ${field(
-                "Cage",
-                currentWeld.cage
-            )}
-
-            ${field(
-                "Detail",
-                currentWeld.detail
-            )}
-
-            ${field(
-                "Father ID",
-                currentWeld.father
-            )}
-
-
-            <hr>
-
-
-            <strong>
-                Weld status
-            </strong>
-
-
-            <div style="
-                font-size:11px;
-                color:${
-                    sharedValid
-                        ? "#006b3c"
-                        : "#666"
-                };
-                margin-top:4px;
-                margin-bottom:8px;
-            ">
-
-                Source:
-                <strong>
-                    ${escapeHtml(source)}
-                </strong>
-
-            </div>
-
-
-            <select
-                id="weldStatusSelect"
-                style="
-                    width:100%;
-                    padding:9px;
-                    margin-bottom:12px;
-                "
-            >
-
-                ${options}
-
-            </select>
-
-
-            <strong>
-                Comment
-            </strong>
-
-
-            <textarea
-                id="statusComment"
-                rows="3"
-                style="
-                    width:100%;
-                    box-sizing:border-box;
-                    margin-top:8px;
-                "
-            >${escapeHtml(
-                currentComment
-            )}</textarea>
-
-
-            <button
-                id="saveButton"
-                style="
-                    width:100%;
-                    margin-top:12px;
-                    padding:11px;
-                    background:#0063a6;
-                    color:white;
-                    border:none;
-                    border-radius:4px;
-                    font-weight:bold;
-                    cursor:pointer;
-                "
-            >
-
-                SAVE WELD STATUS
-
-            </button>
-
-
-            <div
-                id="saveMessage"
-                style="
-                    margin-top:10px;
-                "
-            >
-            </div>
-
-
-            <details
-                style="
-                    margin-top:15px;
-                "
-            >
-
-                <summary>
-                    Technical object information
-                </summary>
-
-
-                <br>
-
-
-                <strong>
-                    Model ID
-                </strong>
-
-                <br>
-
-                ${escapeHtml(
-                    currentWeld.modelId
-                )}
-
-
-                <br><br>
-
-
-                <strong>
-                    External ID / GUID
-                </strong>
-
-                <br>
-
-                ${escapeHtml(
-                    currentWeld.externalId
-                )}
-
-
-                <br><br>
-
-
-                <strong>
-                    Weld Progress detected
-                </strong>
-
-                <br>
-
-                ${
-                    sharedValid
-                        ? "YES"
-                        : "NO"
-                }
-
-
-                <br><br>
-
-
-                <strong>
-                    Shared Weld Status
-                </strong>
-
-                <br>
-
-                ${escapeHtml(
-                    currentWeld.sharedStatus ||
-                    "Not detected"
-                )}
-
-            </details>
-
-        </div>
-    `;
-
+    document
+        .getElementById("status")
+        .innerHTML =
+
+        "<div style=\"" +
+        "border-left:8px solid " +
+        colour +
+        ";" +
+        "padding-left:12px;" +
+        "\">" +
+
+        "<small>WELD ID</small>" +
+
+        "<div style=\"" +
+        "font-size:24px;" +
+        "font-weight:bold;" +
+        "margin-bottom:16px;" +
+        "\">" +
+        escapeHtml(
+            currentWeld.weldId
+        ) +
+        "</div>" +
+
+        field(
+            "Type",
+            currentWeld.type
+        ) +
+
+        field(
+            "Purpose",
+            currentWeld.purpose
+        ) +
+
+        field(
+            "Length",
+            withMM(
+                currentWeld.length
+            )
+        ) +
+
+        field(
+            "Throat",
+            withMM(
+                currentWeld.throat
+            )
+        ) +
+
+        field(
+            "Cage",
+            currentWeld.cage
+        ) +
+
+        field(
+            "Detail",
+            currentWeld.detail
+        ) +
+
+        field(
+            "Father ID",
+            currentWeld.father
+        ) +
+
+        "<hr>" +
+
+        "<strong>Weld status</strong>" +
+
+        "<div style=\"" +
+        "font-size:11px;" +
+        "color:" +
+        (
+            sharedValid
+                ? "#006b3c"
+                : "#b35c00"
+        ) +
+        ";" +
+        "margin-top:4px;" +
+        "margin-bottom:8px;" +
+        "\">" +
+
+        "Source: <strong>" +
+        escapeHtml(source) +
+        "</strong>" +
+
+        "</div>" +
+
+        "<select " +
+        "id=\"weldStatusSelect\" " +
+        "style=\"" +
+        "width:100%;" +
+        "padding:9px;" +
+        "margin-bottom:12px;" +
+        "\">" +
+
+        options +
+
+        "</select>" +
+
+        "<button " +
+        "id=\"saveButton\" " +
+        "style=\"" +
+        "width:100%;" +
+        "margin-top:12px;" +
+        "padding:11px;" +
+        "background:#0063a6;" +
+        "color:white;" +
+        "border:none;" +
+        "border-radius:4px;" +
+        "font-weight:bold;" +
+        "cursor:pointer;" +
+        "\">" +
+
+        "SAVE WELD STATUS" +
+
+        "</button>" +
+
+        "<div " +
+        "id=\"saveMessage\" " +
+        "style=\"margin-top:10px;\">" +
+        "</div>" +
+
+        "<details style=\"margin-top:15px;\">" +
+
+        "<summary>" +
+        "Technical object information" +
+        "</summary>" +
+
+        "<br>" +
+
+        "<strong>Model ID</strong>" +
+        "<br>" +
+        escapeHtml(
+            currentWeld.modelId
+        ) +
+
+        "<br><br>" +
+
+        "<strong>IFC / Object ID</strong>" +
+        "<br>" +
+        escapeHtml(
+            currentWeld.externalId
+        ) +
+
+        "<br><br>" +
+
+        "<strong>PSet link</strong>" +
+        "<br>" +
+        escapeHtml(
+            currentWeld.psetLink
+        ) +
+
+        "<br><br>" +
+
+        "<strong>Shared status</strong>" +
+        "<br>" +
+        escapeHtml(
+            currentWeld.sharedStatus ||
+            "Not found"
+        ) +
+
+        "<br><br>" +
+
+        "<strong>PSet version</strong>" +
+        "<br>" +
+        escapeHtml(
+            currentWeld.psetVersion
+        ) +
+
+        "</details>" +
+
+        "</div>";
 
     document
-        .getElementById(
-            "saveButton"
-        )
+        .getElementById("saveButton")
         .addEventListener(
             "click",
             saveStatus
@@ -1064,12 +1201,20 @@ function renderPanel() {
 
 
 // --------------------------------------------------
-// SAVE
-//
-// STILL LOCAL WRITE FOR THIS TEST.
+// SAVE SHARED STATUS TO TRIMBLE
 // --------------------------------------------------
 
 async function saveStatus() {
+
+    const button =
+        document.getElementById(
+            "saveButton"
+        );
+
+    const message =
+        document.getElementById(
+            "saveMessage"
+        );
 
     const status =
         document
@@ -1078,65 +1223,347 @@ async function saveStatus() {
             )
             .value;
 
+    button.disabled =
+        true;
 
-    const comment =
-        document
-            .getElementById(
-                "statusComment"
-            )
-            .value
-            .trim();
+    button.textContent =
+        "SAVING...";
 
+    message.style.color =
+        "#333333";
 
-    const record = {
+    message.textContent =
+        "Writing status to the Trimble cloud...";
 
-        weldId:
-            currentWeld.weldId,
+    try {
 
-        externalId:
-            currentWeld.externalId,
+        if (!currentWeld) {
 
-        status:
-            status,
+            throw new Error(
+                "No weld is currently selected."
+            );
+        }
 
-        comment:
-            comment,
+        if (!trimbleAccessToken) {
 
-        updatedAt:
-            new Date()
-                .toISOString()
-    };
-
-
-    localStorage.setItem(
-
-        "weld-status-" +
-        currentWeld.externalId,
-
-        JSON.stringify(
-            record
-        )
-    );
+            throw new Error(
+                "The Trimble access token is unavailable."
+            );
+        }
 
 
-    await applyColour(
-        status
-    );
+        // ------------------------------------------
+        // GET LATEST VERSION BEFORE PATCH
+        // ------------------------------------------
+
+        const latestPset =
+            await getSharedPset(
+                currentWeld.psetLink
+            );
+
+        const latestVersion =
+            getPsetVersion(
+                latestPset
+            );
+
+        const latestSchemaVersion =
+            getSchemaVersion(
+                latestPset
+            );
 
 
-    const message =
-        document.getElementById(
-            "saveMessage"
+        // ------------------------------------------
+        // MATCH NATIVE TRIMBLE PAYLOAD
+        // ------------------------------------------
+
+        const writeBody = {
+
+            link:
+                currentWeld.psetLink,
+
+            libId:
+                LIBRARY_ID,
+
+            defId:
+                DEFINITION_ID,
+
+            props: {},
+
+            schemaV:
+                latestSchemaVersion,
+
+            v:
+                latestVersion
+        };
+
+        writeBody.props[
+            WELD_STATUS_PROPERTY_ID
+        ] =
+            status;
+
+
+        console.log(
+            "TRIMBLE PATCH PAYLOAD:",
+            writeBody
         );
 
 
-    message.innerHTML =
-        "<strong>Status saved locally.</strong><br>" +
-        "Shared Trimble write comes next.";
+        const response =
+            await fetch(
+                getPsetUrl(
+                    currentWeld.psetLink
+                ),
+                {
+                    method: "PATCH",
+
+                    headers: {
+                        "Accept":
+                            "application/json",
+
+                        "Content-Type":
+                            "application/json",
+
+                        "Authorization":
+                            "Bearer " +
+                            trimbleAccessToken
+                    },
+
+                    body:
+                        JSON.stringify(
+                            writeBody
+                        )
+                }
+            );
 
 
-    message.style.color =
-        "#006b3c";
+        const responseData =
+            await readResponseData(
+                response
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                "Trimble PATCH returned HTTP " +
+                response.status +
+                "\n\n" +
+                safeJson(responseData)
+            );
+        }
+
+
+        // ------------------------------------------
+        // READ BACK FROM CLOUD
+        // ------------------------------------------
+
+        await wait(
+            750
+        );
+
+        const confirmedPset =
+            await getSharedPset(
+                currentWeld.psetLink
+            );
+
+        const confirmedStatus =
+            getPsetProperty(
+                confirmedPset,
+                WELD_STATUS_PROPERTY_ID
+            );
+
+
+        if (
+            confirmedStatus !== status
+        ) {
+
+            throw new Error(
+                "Trimble accepted the write, but the read-back value was '" +
+                (
+                    confirmedStatus ||
+                    "empty"
+                ) +
+                "' instead of '" +
+                status +
+                "'."
+            );
+        }
+
+
+        // ------------------------------------------
+        // UPDATE LOCAL UI FROM CONFIRMED CLOUD VALUE
+        // ------------------------------------------
+
+        currentWeld.sharedStatus =
+            confirmedStatus;
+
+        currentWeld.psetVersion =
+            getPsetVersion(
+                confirmedPset
+            );
+
+        currentWeld.schemaVersion =
+            getSchemaVersion(
+                confirmedPset
+            );
+
+        await applyColour(
+            confirmedStatus
+        );
+
+        message.innerHTML =
+            "<strong>" +
+            "Status saved to Trimble." +
+            "</strong>" +
+            "<br>" +
+            escapeHtml(
+                confirmedStatus
+            ) +
+            " is now the shared project value.";
+
+        message.style.color =
+            "#006b3c";
+
+
+        // ------------------------------------------
+        // REFRESH PANEL AFTER SUCCESS
+        // ------------------------------------------
+
+        setTimeout(
+            function() {
+
+                renderPanel();
+
+                const refreshedMessage =
+                    document.getElementById(
+                        "saveMessage"
+                    );
+
+                if (refreshedMessage) {
+
+                    refreshedMessage.innerHTML =
+                        "<strong>" +
+                        "Shared status confirmed: " +
+                        escapeHtml(
+                            confirmedStatus
+                        ) +
+                        "</strong>";
+
+                    refreshedMessage.style.color =
+                        "#006b3c";
+                }
+            },
+
+            250
+        );
+
+
+    } catch (error) {
+
+        console.error(
+            "SAVE STATUS FAILED:",
+            error
+        );
+
+        message.innerHTML =
+            "<strong>Shared save failed.</strong>" +
+            "<br>" +
+            escapeHtml(
+                error &&
+                error.message
+                    ? error.message
+                    : String(error)
+            );
+
+        message.style.color =
+            "#b42318";
+
+    } finally {
+
+        button.disabled =
+            false;
+
+        button.textContent =
+            "SAVE WELD STATUS";
+    }
+}
+
+
+// --------------------------------------------------
+// READ API RESPONSE
+// --------------------------------------------------
+
+async function readResponseData(response) {
+
+    const text =
+        await response.text();
+
+    if (!text) {
+
+        return {};
+    }
+
+    try {
+
+        return JSON.parse(
+            text
+        );
+
+    } catch (error) {
+
+        return text;
+    }
+}
+
+
+// --------------------------------------------------
+// WAIT
+// --------------------------------------------------
+
+function wait(milliseconds) {
+
+    return new Promise(
+        function(resolve) {
+
+            setTimeout(
+                resolve,
+                milliseconds
+            );
+        }
+    );
+}
+
+
+// --------------------------------------------------
+// SAFE JSON
+// --------------------------------------------------
+
+function safeJson(value) {
+
+    try {
+
+        return JSON.stringify(
+            value,
+
+            function(key, item) {
+
+                if (
+                    typeof item === "bigint"
+                ) {
+
+                    return item.toString();
+                }
+
+                return item;
+            },
+
+            2
+        );
+
+    } catch (error) {
+
+        return String(value);
+    }
 }
 
 
@@ -1150,30 +1577,27 @@ function field(
 ) {
 
     if (!value) {
+
         return "";
     }
 
+    return (
+        "<div style=\"margin-bottom:10px;\">" +
 
-    return `
+        "<small>" +
+        escapeHtml(
+            label.toUpperCase()
+        ) +
+        "</small>" +
 
-        <div style="
-            margin-bottom:10px;
-        ">
+        "<br>" +
 
-            <small>
-                ${escapeHtml(
-                    label.toUpperCase()
-                )}
-            </small>
+        "<strong>" +
+        escapeHtml(value) +
+        "</strong>" +
 
-            <br>
-
-            <strong>
-                ${escapeHtml(value)}
-            </strong>
-
-        </div>
-    `;
+        "</div>"
+    );
 }
 
 
@@ -1184,13 +1608,12 @@ function field(
 function withMM(value) {
 
     if (!value) {
+
         return "";
     }
 
-
     const text =
         String(value);
-
 
     if (
         text
@@ -1201,11 +1624,7 @@ function withMM(value) {
         return text;
     }
 
-
-    return (
-        text +
-        " mm"
-    );
+    return text + " mm";
 }
 
 
@@ -1216,7 +1635,10 @@ function withMM(value) {
 function escapeHtml(value) {
 
     return String(
-        value ?? ""
+        value === null ||
+        value === undefined
+            ? ""
+            : value
     )
         .replaceAll(
             "&",
@@ -1249,16 +1671,18 @@ function showError(error) {
 
     console.error(error);
 
-
-    document.getElementById("status")
+    document
+        .getElementById("status")
         .innerHTML =
 
         "<strong>Error</strong>" +
         "<br><br>" +
 
         escapeHtml(
-            error?.message ||
-            String(error)
+            error &&
+            error.message
+                ? error.message
+                : String(error)
         );
 }
 
